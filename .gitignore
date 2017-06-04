@@ -1,4 +1,6 @@
 data/
 doc/
 report/
+
 .pyc
+.DS_Store
