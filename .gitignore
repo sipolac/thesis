@@ -1,6 +1,11 @@
-data/
+# data/
 doc/
 report/
+
+# Within data/
+data/REFITPowerData111215/
+data/*.db
+data/*.7z
 
 .pyc
 .DS_Store
