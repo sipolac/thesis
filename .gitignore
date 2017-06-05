@@ -1,11 +1,24 @@
-# data/
+# =====
+# Folders
+# =====
+
 doc/
 report/
 
-# Within data/
+
+# =====
+# Files within folders
+# =====
+
 data/REFITPowerData111215/
 data/*.db
 data/*.7z
 
-.pyc
+py/*.pyc
+
+
+# =====
+# File types
+# =====
+
 .DS_Store
