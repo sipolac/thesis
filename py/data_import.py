@@ -18,7 +18,6 @@ def calc_diff(df_col, pad_end=True, nan_fill=None):
 
 def load_house_csv(house_id, refit_data_path, columns, nrows=None):
     '''
-    Inspired by code in NILMTK package.
     '''
     csv_filename = os.path.join(refit_data_path, 'House{}.csv'.format(house_id))
     df = pd.read_csv(csv_filename, names=columns, nrows=nrows)
