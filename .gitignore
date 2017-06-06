@@ -11,6 +11,7 @@ report/
 # =====
 
 data/REFITPowerData111215/
+data/refit
 data/*.db
 data/*.7z
 
