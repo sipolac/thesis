@@ -17,7 +17,7 @@ def load_house_csv(house_id, refit_data_path, columns, nrows=None):
     return df
 
 
-def save_refit_data(conn, refit_data_path, method='numpy', dir_houses=None, dir_data=None, nrows=None, chunksize=10000):
+def save_refit_data(refit_data_path, method='numpy', dir_refit=None, dir_data=None, nrows=None, conn=None, chunksize=10000):
     '''
     '''
 
@@ -46,12 +46,12 @@ def save_refit_data(conn, refit_data_path, method='numpy', dir_houses=None, dir_
         elif method == 'numpy':
             if house_id == 1:
                 # Create directory where we'll save REFIT data.
-                if os.path.exists(dir_houses):
-                    shutil.rmtree(dir_houses)
-                os.makedirs(dir_houses)
+                if os.path.exists(dir_refit):
+                    shutil.rmtree(dir_refit)
+                os.makedirs(dir_refit)
 
             # Make directory for house.
-            dir_house = os.path.join(dir_houses, 'house{}'.format(house_id))
+            dir_house = os.path.join(dir_refit, 'house{}'.format(house_id))
             os.makedirs(dir_house)
             for column in columns:
                 # Data type should be int32 for timestamp and int16 for appliance power levels.
