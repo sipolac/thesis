@@ -17,7 +17,7 @@ def load_house_csv(house_id, refit_data_path, columns, nrows=None):
     return df
 
 
-def save_refit_data(refit_data_path, method='numpy', dir_refit=None, dir_data=None, nrows=None, conn=None, chunksize=10000):
+def save_refit_data(refit_raw_path, method='numpy', dir_refit=None, dir_data=None, nrows=None, conn=None, chunksize=10000):
     '''
     '''
 
@@ -37,7 +37,7 @@ def save_refit_data(refit_data_path, method='numpy', dir_refit=None, dir_data=No
         # appliance_cols = app.loc[app['House'] == house_id, 'Appliance'].values.tolist()
         # columns = ['Timestamp', 'aggregate'] + appliance_cols
         columns = ['timestamp'] + ['appliance{}'.format(i) for i in range(10)]
-        df = load_house_csv(house_id, refit_data_path, columns, nrows)
+        df = load_house_csv(house_id, refit_raw_path, columns, nrows)
         
         if method == 'sqlite':
             if_exists = 'replace' if house_id == 1 else 'append'
