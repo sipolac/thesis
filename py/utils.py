@@ -1,6 +1,6 @@
 
 import numpy as np
-import datetime
+from datetime import datetime
 
 
 def sigmoid(x):
@@ -12,7 +12,7 @@ def ts2dt(ts):
     # Source: https://stackoverflow.com/questions/3694487/initialize-a-datetime-object-with-seconds-since-epoch
     # return np.array(pd.to_datetime(ts, unit='s', utc=True).tz_convert('Europe/London'))
     if isinstance(ts, int):
-        return datetime.datetime.fromtimestamp(ts)
+        return datetime.fromtimestamp(ts)
     else:
         return [ts2dt(i) for i in ts]
 
@@ -20,7 +20,7 @@ def ts2dt(ts):
 def dt2ts(dt):
     '''Convert datetime to int timestamp'''
     # Source: https://stackoverflow.com/questions/11743019/convert-python-datetime-to-epoch-with-strftime
-    if isinstance(dt, datetime.datetime):
+    if isinstance(dt, datetime):
         return int(dt.strftime('%s'))
     else:
         return [dt2ts(i) for i in dt]
@@ -67,3 +67,7 @@ def calc_diff(df_col, pad_end=True, nan_fill=None):
     if not pad_end:
         beg, end = end, beg  # pad beginning instead
     return np.append(beg, end).astype(int)
+
+
+def floor_time(dt):
+    return datetime.combine(dt.date(), datetime.min.time())
