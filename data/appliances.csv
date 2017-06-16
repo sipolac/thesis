@@ -1,201 +1,201 @@
-House,ApplianceNum,ApplianceOrig,Appliance
-1,1,Fridge,fridge
-1,2,Chest Freezer,chest freezer
-1,3,Upright Freezer,upright freezer
-1,4,Tumble Dryer,tumble dryer
-1,5,Washing Machine,washing machine
-1,6,Dishwasher,dishwasher
-1,7,Computer Site,computer site
-1,8,Television Site,television site
-1,9,Electric Heater,electric heater
-2,1,Fridge-Freezer,fridge-freezer
-2,2,Washing Machine,washing machine
-2,3,Dishwasher,dishwasher
-2,4,Television,television
-2,5,Microwave,microwave
-2,6,Toaster,toaster
-2,7,Hi-Fi,hi-fi
-2,8,Kettle,kettle
-2,9,Oven Extractor Fan,oven extractor fan
-3,1,Toaster,toaster
-3,2,Fridge-Freezer,fridge-freezer
-3,3,Freezer,freezer
-3,4,Tumble Dryer,tumble dryer
-3,5,Dishwasher,dishwasher
-3,6,Washing Machine,washing machine
-3,7,Television,television
-3,8,Microwave,microwave
-3,9,Kettle,kettle
-4,1,Fridge,fridge
-4,2,Freezer,freezer
-4,3,Fridge-Freezer,fridge-freezer
-4,4,Washing Machine (1),washing machine
-4,5,Washing Machine (2),washing machine
-4,6,Computer Site,computer site
-4,7,Television Site,television site
-4,8,Microwave,microwave
-4,9,Kettle,kettle
-5,1,Fridge-Freezer,fridge-freezer
-5,2,Tumble Dryer,tumble dryer
-5,3,Washing Machine,washing machine
-5,4,Dishwasher,dishwasher
-5,5,Computer Site,computer site
-5,6,Television Site,television site
-5,7,Combination Microwave,combination microwave
-5,8,Kettle,kettle
-5,9,Toaster,toaster
-6,1,Freezer (Utility Room),freezer (utility room)
-6,2,Washing Machine,washing machine
-6,3,Dishwasher,dishwasher
-6,4,MJY Computer,mjy computer
-6,5,Television Site,television site
-6,6,Microwave,microwave
-6,7,Kettle,kettle
-6,8,Toaster,toaster
-6,9,PGM Computer,pgm computer
-7,1,Fridge,fridge
-7,2,Freezer (Garage),freezer (garage)
-7,3,Freezer,freezer
-7,4,Tumble Dryer,tumble dryer
-7,5,Washing Machine,washing machine
-7,6,Dishwasher,dishwasher
-7,7,Television,television
-7,8,Toaster,toaster
-7,9,Kettle,kettle
-8,1,Fridge,fridge
-8,2,Freezer,freezer
-8,3,Dryer,dryer
-8,4,Washing Machine,washing machine
-8,5,Toaster,toaster
-8,6,Computer,computer
-8,7,Television Site,television site
-8,8,Microwave,microwave
-8,9,Kettle,kettle
-9,1,Fridge-Freezer,fridge-freezer
-9,2,Washer Dryer,washer dryer
-9,3,Washing Machine,washing machine
-9,4,Dishwasher,dishwasher
-9,5,Television Site,television site
-9,6,Microwave,microwave
-9,7,Kettle,kettle
-9,8,Hi-Fi,hi-fi
-9,9,Electric Heater,electric heater
-10,1,Magimix (Blender),magimix (blender)
-10,2,Freezer,freezer
-10,3,Chest Freezer (In Garage),chest freezer (in garage)
-10,4,Fridge-Freezer,fridge-freezer
-10,5,Washing Machine,washing machine
-10,6,Dishwasher,dishwasher
-10,7,Television Site,television site
-10,8,Microwave,microwave
-10,9,Kenwood KMix,kenwood kmix
-11,1,Fridge,fridge
-11,2,Fridge-Freezer,fridge-freezer
-11,3,Washing Machine,washing machine
-11,4,Dishwasher,dishwasher
-11,5,Computer Site,computer site
-11,6,Microwave,microwave
-11,7,Kettle,kettle
-11,8,Router,router
-11,9,Hi-Fi,hi-fi
-12,1,Fridge-Freezer,fridge-freezer
-12,2,Television Site(Lounge),television site(lounge)
-12,3,Microwave,microwave
-12,4,Kettle,kettle
-12,5,Toaster,toaster
-12,6,Television Site(Bedroom),television site(bedroom)
-12,7,Not Used,not used
-12,8,Not Used,not used
-12,9,Not Used,not used
-13,1,Television Site,television site
-13,2,Unknown,unknown
-13,3,Washing Machine,washing machine
-13,4,Dishwasher,dishwasher
-13,5,Tumble Dryer,tumble dryer
-13,6,Television Site,television site
-13,7,Computer Site,computer site
-13,8,Microwave,microwave
-13,9,Kettle,kettle
-15,1,Fridge-Freezer,fridge-freezer
-15,2,Tumble Dryer,tumble dryer
-15,3,Washing Machine,washing machine
-15,4,Dishwasher,dishwasher
-15,5,Computer Site,computer site
-15,6,Television Site,television site
-15,7,Microwave,microwave
-15,8,Kettle,kettle
-15,9,Toaster,toaster
-16,1,Fridge-Freezer (1),fridge-freezer (1)
-16,2,Fridge-Freezer (2),fridge-freezer (2)
-16,3,Electric Heater (1)?,electric heater (1)?
-16,4,Electric Heater (2),electric heater (2)
-16,5,Washing Machine,washing machine
-16,6,Dishwasher,dishwasher
-16,7,Computer Site,computer site
-16,8,Television Site,television site
-16,9,Dehumidifier/Heater,dehumidifier/heater
-17,1,Freezer (Garage),freezer (garage)
-17,2,Fridge-Freezer,fridge-freezer
-17,3,Tumble Dryer (Garage),tumble dryer (garage)
-17,4,Washing Machine,washing machine
-17,5,Computer Site,computer site
-17,6,Television Site,television site
-17,7,Microwave,microwave
-17,8,Kettle,kettle
-17,9,Plug Site (Bedroom),plug site (bedroom)
-18,1,Fridge(garage),fridge(garage)
-18,2,Freezer(garage),freezer(garage)
-18,3,Fridge-Freezer,fridge-freezer
-18,4,Washer Dryer(garage),washer dryer(garage)
-18,5,Washing Machine,washing machine
-18,6,Dishwasher,dishwasher
-18,7,Desktop Computer,desktop computer
-18,8,Television Site,television site
-18,9,Microwave,microwave
-19,1,Fridge & Freezer,fridge & freezer
-19,2,Washing Machine,washing machine
-19,3,Television Site,television site
-19,4,Microwave,microwave
-19,5,Kettle,kettle
-19,6,Toaster,toaster
-19,7,Break-maker,break-maker
-19,8,Lamp (80Watts),lamp (80watts)
-19,9,Hi-Fi,hi-fi
-20,1,Fridge,fridge
-20,2,Freezer,freezer
-20,3,Tumble Dryer,tumble dryer
-20,4,Washing Machine,washing machine
-20,5,Dishwasher,dishwasher
-20,6,Computer Site,computer site
-20,7,Television Site,television site
-20,8,Microwave,microwave
-20,9,Kettle,kettle
-21,1,Fridge-Freezer,fridge-freezer
-21,2,Tumble Dryer,tumble dryer
-21,3,Washing Machine,washing machine
-21,4,Dishwasher,dishwasher
-21,5,Food Mixer,food mixer
-21,6,Television,television
-21,7,Kettle/Toaster,kettle/toaster
-21,8,Vivarium,vivarium
-21,9,Pond Pump,pond pump
-1,0,Aggregate,aggregate
-2,0,Aggregate,aggregate
-3,0,Aggregate,aggregate
-4,0,Aggregate,aggregate
-5,0,Aggregate,aggregate
-6,0,Aggregate,aggregate
-7,0,Aggregate,aggregate
-8,0,Aggregate,aggregate
-9,0,Aggregate,aggregate
-10,0,Aggregate,aggregate
-11,0,Aggregate,aggregate
-12,0,Aggregate,aggregate
-13,0,Aggregate,aggregate
-15,0,Aggregate,aggregate
-16,0,Aggregate,aggregate
-17,0,Aggregate,aggregate
-18,0,Aggregate,aggregate
-19,0,Aggregate,aggregate
-20,0,Aggregate,aggregate
-21,0,Aggregate,aggregate
+House,ApplianceNum,ApplianceOrig_Raw,ApplianceOrig_Cleaned,Appliance,Discrepancy,Discrepancy_Important,GuessOfCorrect
+1,0,Aggregate,Aggregate,aggregate,0,0,
+1,1,Fridge,Fridge,fridge,0,0,
+1,2,Chest Freezer,Freezer(1),chest freezer,1,0,
+1,3,Upright Freezer,Freezer(2),upright freezer,1,0,
+1,4,Tumble Dryer,Washer Dryer,tumble dryer,1,1,raw?
+1,5,Washing Machine,Washing Machine,washing machine,0,0,
+1,6,Dishwasher,Dishwasher,dishwasher,0,0,
+1,7,Computer Site,Computer,computer site,1,0,
+1,8,Television Site,Television Site,television site,0,0,
+1,9,Electric Heater,Electric Heater,electric heater,0,0,
+2,0,Aggregate,Aggregate,aggregate,0,0,
+2,1,Fridge-Freezer,Fridge-Freezer,fridge-freezer,0,0,
+2,2,Washing Machine,Washing Machine,washing machine,0,0,
+2,3,Dishwasher,Dishwasher,dishwasher,0,0,
+2,4,Television,Television Site,television,1,0,
+2,5,Microwave,Microwave,microwave,0,0,
+2,6,Toaster,Toaster,toaster,0,0,
+2,7,Hi-Fi,Hi-Fi,hi-fi,0,0,
+2,8,Kettle,Kettle,kettle,0,0,
+2,9,Oven Extractor Fan,Overhead Fan,oven extractor fan,1,0,
+3,0,Aggregate,Aggregate,aggregate,0,0,
+3,1,Toaster,Toaster,toaster,0,0,
+3,2,Fridge-Freezer,Fridge-Freezer,fridge-freezer,0,0,
+3,3,Freezer,Freezer,freezer,0,0,
+3,4,Tumble Dryer,Tumble Dryer,tumble dryer,0,0,
+3,5,Dishwasher,Dishwasher,dishwasher,0,0,
+3,6,Washing Machine,Washing Machine,washing machine,0,0,
+3,7,Television,Television Site,television,1,0,
+3,8,Microwave,Microwave,microwave,0,0,
+3,9,Kettle,Kettle,kettle,0,0,
+4,0,Aggregate,Aggregate,aggregate,0,0,
+4,1,Fridge,Fridge,fridge,0,0,
+4,2,Freezer,Freezer,freezer,0,0,
+4,3,Fridge-Freezer,Fridge-Freezer,fridge-freezer,0,0,
+4,4,Washing Machine (1),Washing Machine(1),washing machine,1,0,
+4,5,Washing Machine (2),Washing Machine(2),washing machine,1,0,
+4,6,Computer Site,Desktop Computer,computer site,1,0,
+4,7,Television Site,Television Site,television site,0,0,
+4,8,Microwave,Microwave,microwave,0,0,
+4,9,Kettle,Kettle,kettle,0,0,
+5,0,Aggregate,Aggregate,aggregate,0,0,
+5,1,Fridge-Freezer,Fridge-Freezer,fridge-freezer,0,0,
+5,2,Tumble Dryer,Tumble Dryer,tumble dryer,0,0,
+5,3,Washing Machine,Washing Machine,washing machine,0,0,
+5,4,Dishwasher,Dishwasher,dishwasher,0,0,
+5,5,Computer Site,Desktop Computer,computer site,1,0,
+5,6,Television Site,Television Site,television site,0,0,
+5,7,Combination Microwave,Microwave,combination microwave,1,1,raw?
+5,8,Kettle,Kettle,kettle,0,0,
+5,9,Toaster,Toaster,toaster,0,0,
+6,0,Aggregate,Aggregate,aggregate,0,0,
+6,1,Freezer (Utility Room),Freezer,freezer (utility room),1,0,
+6,2,Washing Machine,Washing Machine,washing machine,0,0,
+6,3,Dishwasher,Dishwasher,dishwasher,0,0,
+6,4,MJY Computer,MJY Computer,mjy computer,0,0,
+6,5,Television Site,TV/Satellite,television site,1,0,
+6,6,Microwave,Microwave,microwave,0,0,
+6,7,Kettle,Kettle,kettle,0,0,
+6,8,Toaster,Toaster,toaster,0,0,
+6,9,PGM Computer,PGM Computer,pgm computer,0,0,
+7,0,Aggregate,Aggregate,aggregate,0,0,
+7,1,Fridge,Fridge,fridge,0,0,
+7,2,Freezer (Garage),Freezer(1),freezer (garage),1,0,
+7,3,Freezer,Freezer(2),freezer,1,0,
+7,4,Tumble Dryer,Tumble Dryer,tumble dryer,0,0,
+7,5,Washing Machine,Washing Machine,washing machine,0,0,
+7,6,Dishwasher,Dishwasher,dishwasher,0,0,
+7,7,Television,Television Site,television,1,0,
+7,8,Toaster,Toaster,toaster,0,0,
+7,9,Kettle,Kettle,kettle,0,0,
+8,0,Aggregate,Aggregate,aggregate,0,0,
+8,1,Fridge,Fridge,fridge,0,0,
+8,2,Freezer,Freezer,freezer,0,0,
+8,3,Dryer,Washer Dryer,dryer,1,1,?
+8,4,Washing Machine,Washing Machine,washing machine,0,0,
+8,5,Toaster,Toaster,toaster,0,0,
+8,6,Computer,Computer,computer,0,0,
+8,7,Television Site,Television Site,television site,0,0,
+8,8,Microwave,Microwave,microwave,0,0,
+8,9,Kettle,Kettle,kettle,0,0,
+9,0,Aggregate,Aggregate,aggregate,0,0,
+9,1,Fridge-Freezer,Fridge-Freezer,fridge-freezer,0,0,
+9,2,Washer Dryer,Washer Dryer,washer dryer,0,0,
+9,3,Washing Machine,Washing Machine,washing machine,0,0,
+9,4,Dishwasher,Dishwasher,dishwasher,0,0,
+9,5,Television Site,Television Site,television site,0,0,
+9,6,Microwave,Microwave,microwave,0,0,
+9,7,Kettle,Kettle,kettle,0,0,
+9,8,Hi-Fi,Hi-Fi,hi-fi,0,0,
+9,9,Electric Heater,Electric Heater,electric heater,0,0,
+10,0,Aggregate,Aggregate,aggregate,0,0,
+10,1,Magimix (Blender),Magimix(Blender),magimix (blender),1,0,
+10,2,Freezer,Toaster,freezer,1,0,
+10,3,Chest Freezer (In Garage),Chest Freezer,chest freezer (in garage),1,0,
+10,4,Fridge-Freezer,Fridge-Freezer,fridge-freezer,0,0,
+10,5,Washing Machine,Washing Machine,washing machine,0,0,
+10,6,Dishwasher,Dishwasher,dishwasher,0,0,
+10,7,Television Site,Television Site,television site,0,0,
+10,8,Microwave,Microwave,microwave,0,0,
+10,9,Kenwood KMix,K Mix,kenwood kmix,1,0,
+11,0,Aggregate,Aggregate,aggregate,0,0,
+11,1,Fridge,Fridge,fridge,0,0,
+11,2,Fridge-Freezer,Fridge-Freezer,fridge-freezer,0,0,
+11,3,Washing Machine,Washing Machine,washing machine,0,0,
+11,4,Dishwasher,Dishwasher,dishwasher,0,0,
+11,5,Computer Site,Computer Site,computer site,0,0,
+11,6,Microwave,Microwave,microwave,0,0,
+11,7,Kettle,Kettle,kettle,0,0,
+11,8,Router,Router,router,0,0,
+11,9,Hi-Fi,Hi-Fi,hi-fi,0,0,
+12,0,Aggregate,Aggregate,aggregate,0,0,
+12,1,Fridge-Freezer,Fridge-Freezer,fridge-freezer,0,0,
+12,2,Television Site(Lounge),???,television site(lounge),1,0,
+12,3,Microwave,???,microwave,1,1,?
+12,4,Kettle,Computer Site,kettle,1,1,raw
+12,5,Toaster,Microwave,toaster,1,1,?
+12,6,Television Site(Bedroom),Kettle,television site(bedroom),1,1,raw
+12,7,Not Used,Toaster,not used,1,0,
+12,8,Not Used,Television,not used,1,0,
+12,9,Not Used,???,not used,1,0,
+13,0,Aggregate,Aggregate,aggregate,0,0,
+13,1,Television Site,Television Site,television site,0,0,
+13,2,Unknown,Freezer,unknown,1,0,
+13,3,Washing Machine,Washing Machine,washing machine,0,0,
+13,4,Dishwasher,Dishwasher,dishwasher,0,0,
+13,5,Tumble Dryer,???,tumble dryer,1,0,
+13,6,Television Site,Network Site,television site,1,0,
+13,7,Computer Site,Microwave,computer site,1,1,raw
+13,8,Microwave,Microwave,microwave,0,0,
+13,9,Kettle,Kettle,kettle,0,0,
+15,0,Aggregate,Aggregate,aggregate,0,0,
+15,1,Fridge-Freezer,Fridge-Freezer,fridge-freezer,0,0,
+15,2,Tumble Dryer,Tumble Dryer,tumble dryer,0,0,
+15,3,Washing Machine,Washing Machine,washing machine,0,0,
+15,4,Dishwasher,Dishwasher,dishwasher,0,0,
+15,5,Computer Site,Computer Site,computer site,0,0,
+15,6,Television Site,Television Site,television site,0,0,
+15,7,Microwave,Microwave,microwave,0,0,
+15,8,Kettle,Hi-Fi,kettle,1,1,raw
+15,9,Toaster,Toaster,toaster,0,0,
+16,0,Aggregate,Aggregate,aggregate,0,0,
+16,1,Fridge-Freezer (1),Fridge-Freezer(1),fridge-freezer (1),1,0,
+16,2,Fridge-Freezer (2),Fridge-Freezer(2),fridge-freezer (2),1,0,
+16,3,Electric Heater (1)?,Electric Heater(1),electric heater (1)?,1,0,
+16,4,Electric Heater (2),Electric Heater(2),electric heater (2),1,0,
+16,5,Washing Machine,Washing Machine,washing machine,0,0,
+16,6,Dishwasher,Dishwasher,dishwasher,0,0,
+16,7,Computer Site,Computer Site,computer site,0,0,
+16,8,Television Site,Television Site,television site,0,0,
+16,9,Dehumidifier/Heater,Dehumidifier,dehumidifier/heater,1,0,
+17,0,Aggregate,Aggregate,aggregate,0,0,
+17,1,Freezer (Garage),Freezer,freezer (garage),1,0,
+17,2,Fridge-Freezer,Fridge-Freezer,fridge-freezer,0,0,
+17,3,Tumble Dryer (Garage),Tumble Dryer,tumble dryer (garage),1,0,
+17,4,Washing Machine,Washing Machine,washing machine,0,0,
+17,5,Computer Site,Computer Site,computer site,0,0,
+17,6,Television Site,Television Site,television site,0,0,
+17,7,Microwave,Microwave,microwave,0,0,
+17,8,Kettle,Kettle,kettle,0,0,
+17,9,Plug Site (Bedroom),TV Site(Bedroom),plug site (bedroom),1,0,
+18,0,Aggregate,Aggregate,aggregate,0,0,
+18,1,Fridge(garage),Fridge(garage),fridge(garage),0,0,
+18,2,Freezer(garage),Freezer(garage),freezer(garage),0,0,
+18,3,Fridge-Freezer,Fridge-Freezer,fridge-freezer,0,0,
+18,4,Washer Dryer(garage),Washer Dryer(garage),washer dryer(garage),0,0,
+18,5,Washing Machine,Washing Machine,washing machine,0,0,
+18,6,Dishwasher,Dishwasher,dishwasher,0,0,
+18,7,Desktop Computer,Desktop Computer,desktop computer,0,0,
+18,8,Television Site,Television Site,television site,0,0,
+18,9,Microwave,Microwave,microwave,0,0,
+19,0,Aggregate,Aggregate,aggregate,0,0,
+19,1,Fridge & Freezer,Fridge Freezer,fridge & freezer,1,0,
+19,2,Washing Machine,Washing Machine,washing machine,0,0,
+19,3,Television Site,Television Site,television site,0,0,
+19,4,Microwave,Microwave,microwave,0,0,
+19,5,Kettle,Kettle,kettle,0,0,
+19,6,Toaster,Toaster,toaster,0,0,
+19,7,Break-maker,Bread-maker,break-maker,1,0,
+19,8,Lamp (80Watts),Games Console,lamp (80watts),1,0,
+19,9,Hi-Fi,Hi-Fi,hi-fi,0,0,
+20,0,Aggregate,Aggregate,aggregate,0,0,
+20,1,Fridge,Fridge,fridge,0,0,
+20,2,Freezer,Freezer,freezer,0,0,
+20,3,Tumble Dryer,Tumble Dryer,tumble dryer,0,0,
+20,4,Washing Machine,Washing Machine,washing machine,0,0,
+20,5,Dishwasher,Dishwasher,dishwasher,0,0,
+20,6,Computer Site,Computer Site,computer site,0,0,
+20,7,Television Site,Television Site,television site,0,0,
+20,8,Microwave,Microwave,microwave,0,0,
+20,9,Kettle,Kettle,kettle,0,0,
+21,0,Aggregate,Aggregate,aggregate,0,0,
+21,1,Fridge-Freezer,Fridge-Freezer,fridge-freezer,0,0,
+21,2,Tumble Dryer,Tumble Dryer,tumble dryer,0,0,
+21,3,Washing Machine,Washing Machine,washing machine,0,0,
+21,4,Dishwasher,Dishwasher,dishwasher,0,0,
+21,5,Food Mixer,Food Mixer,food mixer,0,0,
+21,6,Television,Television,television,0,0,
+21,7,Kettle/Toaster,Kettle,kettle/toaster,1,1,?
+21,8,Vivarium,Vivarium,vivarium,0,0,
+21,9,Pond Pump,Pond Pump,pond pump,0,0,

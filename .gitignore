@@ -18,6 +18,7 @@ data/refit
 data/*.db
 data/*.7z
 data/*.pkl
+data/*.npy
 
 py/*.pyc
 
