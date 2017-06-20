@@ -2,6 +2,8 @@
 import numpy as np
 from datetime import datetime
 from datetime import timedelta
+import pandas as pd
+import matplotlib.pyplot as plt
 
 
 def sigmoid(x):
@@ -39,8 +41,18 @@ def hours_in_day(dt):
     return int((dt2ts(dt + timedelta(days=1)) - dt2ts(dt)) / 3600)
 
 
+def date_to_datetime(d):
+    return datetime.combine(d, datetime.min.time())
+
+
 def floor_time(dt):
     return datetime.combine(dt.date(), datetime.min.time())
+
+
+def dt64_to_datetime(dt64):
+    # dt64 is numpy datetime format.
+    ns = 1e-9 # number of seconds in a nanosecond
+    return datetime.utcfromtimestamp(dt64.astype(int) * ns)
 
 
 def array_to_1d(x):
@@ -87,25 +99,47 @@ def align_arrays(actual, desired, padder=None, is_debug=False):
     return idx
 
 
-# class StdevFunc:
-#     '''
-#     A standard dev function for SQLite
-#     '''
-#     # Credit: http://www.alexforencich.com/wiki/en/scripts/python/stdev
-#     def __init__(self):
-#         self.M = 0.0
-#         self.S = 0.0
-#         self.k = 1
- 
-#     def step(self, value):
-#         if value is None:
-#             return
-#         tM = self.M
-#         self.M += (value - tM) / self.k
-#         self.S += (value - tM) * (value - self.M)
-#         self.k += 1
- 
-#     def finalize(self):
-#         if self.k < 3:
-#             return None
-#         return np.sqrt(self.S / (self.k-2))
+def plot_series(x):
+    return pd.Series(x, index=range(len(x))).plot()
+
+
+def plot_empir_cum(x):
+    return plt.step(sorted(x), np.arange(len(x))/len(x), color='black')
+
+
+class MultinomialSampler(object):
+    """
+    Fast (O(log n)) sampling from a discrete probability
+    distribution, with O(n) set-up time.
+    """
+
+    def __init__(self, p, verbose=False):
+        n = len(p)
+        p = p.astype(float) / sum(p)
+        self._cdf = np.cumsum(p)
+
+    def sample(self, k=1):
+        rs = np.random.random(k)
+        # binary search to get indices
+        return np.searchsorted(self._cdf, rs)
+
+    def __call__(self, **kwargs):
+        return self.sample(**kwargs)
+
+    def reconstruct_p(self):
+        """
+        Return the original probability vector.
+        Helpful for debugging.
+        """
+        n = len(self._cdf)
+        p = np.zeros(n)
+        p[0] = self._cdf[0]
+        p[1:] = (self._cdf[1:] - self._cdf[:-1])
+        return p
+
+def multinomial_sample(p):
+    """
+    Wrapper to generate a single sample,
+    using the above class.
+    """
+    return MultinomialSampler(p).sample(1)[0]

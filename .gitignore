@@ -15,6 +15,7 @@ data/REFITPowerData111215/
 data/CLEAN_REFIT_081116/
 data/Processed_Data_CSV/
 data/refit
+data/bank
 data/*.db
 data/*.7z
 data/*.pkl

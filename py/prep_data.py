@@ -1,3 +1,8 @@
+'''
+TODO:
+> Only create synthetic data for days you want to train on.
+> Make sure distractor appliance counts are realistic instead of always choosing one signal.
+'''
 
 from __future__ import division
 
@@ -13,9 +18,10 @@ from datetime import date
 
 import matplotlib.pyplot as plt
 import matplotlib
-import seaborn as sns
 
 from utils import *
+
+matplotlib.style.use('ggplot')
 
 
 def load_house_csv(house_id, dir_refit_csv, nrows=None):
@@ -62,7 +68,7 @@ def save_refit_data(dir_refit_csv, dir_refit_np, nrows=None, house_ids=None):
             np.save(os.path.join(dir_house, '{}.npy'.format(column)), df[column].values.astype(dtype))
 
         t1 = time.time()
-        print 'added house {0} ({1:.2g} min)'.format(house_id, (t1 - t0)/60)
+        print 'wrote data for house {0} ({1:.2g} min)'.format(house_id, (t1 - t0)/60)
 
     print 'done!'
 
@@ -77,7 +83,7 @@ def create_app_dict():
     ])
 
 
-def apps_add_cols_from_patterns(app_dict):
+def apps_add_cols_from_patterns(apps, app_dict):
     for (app_name, dct) in app_dict.items():
         app_col = dct['col']
         pattern = dct['pattern']
@@ -85,7 +91,9 @@ def apps_add_cols_from_patterns(app_dict):
     return apps
 
 
-def create_app_funs(apps, app_dict):
+def create_app_funs(apps, app_dict, app_names):
+
+    app_cols = [app_dict[app_name]['col'] for app_name in app_names]
 
     def get_house_app_tuples(app_name, return_pd=False):
         app_col = app_dict[app_name]['col']
@@ -104,7 +112,10 @@ def create_app_funs(apps, app_dict):
     def get_app_name(house_id, app_num):
         return apps[(apps['House'] == house_id) & (apps['ApplianceNum'] == app_num)]['Appliance'].values[0]
 
-    return (get_house_app_tuples, get_app_nums, get_app_name)
+    def is_a_target_app(house_id, app_num):
+        return (apps.loc[(apps['House']==house_id) & (apps['ApplianceNum']==app_num)][app_cols].values).any()
+
+    return (get_house_app_tuples, get_app_nums, get_app_name, is_a_target_app)
 
 
 def create_load_funs(dir_refit):
@@ -128,7 +139,7 @@ def create_load_funs(dir_refit):
     return (load_app, load_ts, load_issues)
 
 
-def get_ts_idx(ts_series, dt_start, dt_end=None):
+def get_ts_mask(ts_series, dt_start, dt_end=None):
     '''
     Get index for time of day without having to convert all timestamps in array to dateitmes.
     '''
@@ -162,8 +173,8 @@ def get_df(house_id, use_app_names=False, dt_start=None, dt_end=None, include_is
         df[app_name] = load_app(house_id, app_num)
         
     if dt_start is not None:  # that is, if we don't want all dates
-        idx = get_ts_idx(ts_series, dt_start, dt_end)
-        df = df.loc[idx]
+        ts_mask = get_ts_mask(ts_series, dt_start, dt_end)
+        df = df.loc[ts_mask]
     
     if include_issues:
         # Add issues column.
@@ -172,7 +183,7 @@ def get_df(house_id, use_app_names=False, dt_start=None, dt_end=None, include_is
     return df
 
 
-def plot_day(house_id, dt, savefile=None, figsize=(7,5), cols=None):
+def plot_day(house_id, dt, savefile=None, figsize=(9,5), cols=None):
     '''
     Plot time series of power data for each appliance, for specified house and date(time).
     '''
@@ -186,10 +197,31 @@ def plot_day(house_id, dt, savefile=None, figsize=(7,5), cols=None):
     del df['Unix']
     
     # df = df.tz_localize('GMT').tz_convert('Europe/London')
-    ax = df.plot(figsize=figsize)
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    app_names = list(df)  # get columns from DataFrame
+   
+    # Set color map.
+    colormap = plt.cm.Set1
+    ax.set_color_cycle([colormap(i) for i in np.linspace(0, 1, len(app_names))])
+    # ax = df.plot(figsize=figsize)
+    for app_name in app_names:
+        ax = df[app_name].plot(figsize=figsize)
     ax.set_title('House {}\n{}'.format(house_id, dt.date().strftime('%Y-%m-%d')))
     ax.set_xlabel('')
+    ax.set_ylabel('Power (Watts)')
     # plt.xticks(np.arange(min(df.index), max(df.index)+1, 8.))
+
+    # Put legend outside of plot.
+    # https://stackoverflow.com/a/4701285/4794432
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+    # # Decrese legend font size.
+    # fontP = FontProperties()
+    # fontP.set_size('xx-small')
+
     if savefile is not None:
         plt.savefig(savefile)
     return ax
@@ -225,6 +257,7 @@ def calc_stats_for_house(house_id, nrow=None):
     ])
     for app_num in range(10):
         # Calculate total energy used by appliance.
+        funs['Appliance{}'.format(app_num)] = [np.mean, np.median, min, max]
         funs['EnergyAppliance{}'.format(app_num)] = sum
     
     # Import timestamp data, calculate diffs (for calculating energy used by appliances), and set index (for grouping by day)
@@ -281,12 +314,17 @@ def calc_stats_for_house(house_id, nrow=None):
 
 def create_daily_stats(house_ids, pkl_path=None, nrow=None):
 
+    print 'calculating daily stats...'
+
     dstats = []
     for house_id in house_ids:
+        t0 = time.time()
         print 'calculating stats for house {}...'.format(house_id)
         stats_house = calc_stats_for_house(house_id, nrow=nrow)
         stats_house['House'] = house_id
         dstats.append(stats_house)
+        t1 = time.time()
+        print 'calculated stats for house {0} ({1:.2g} min)'.format(house_id, (t1 - t0)/60)
     dstats = pd.concat(dstats)
     print 'done!'
     
@@ -296,13 +334,17 @@ def create_daily_stats(house_ids, pkl_path=None, nrow=None):
     return dstats
 
 
-def create_daily_plots(house_ids, dir_run):
+def create_daily_plots(house_ids, dir_run, figsize=(9,5)):
 
     # Plot day of data for all homes for various days (approx one plot per month).
+
+    print 'creating daily plots...'
+
     dt_start = datetime(2013,11,1)  # around first day of data
     for house_id in house_ids:
 
-        print 'making plots for house {}...'.format(house_id)
+        print 'creating plots for house {}...'.format(house_id)
+        t0 = time.time()
 
         house_dir = os.path.join(dir_run, 'daily_power', 'house{}'.format(house_id))
         if not os.path.exists(house_dir):
@@ -313,28 +355,31 @@ def create_daily_plots(house_ids, dir_run):
             dt = dt_start + timedelta(days=days_to_add)
             savefile = os.path.join(house_dir, '{}.pdf'.format(str(dt.date())))
             try:
-                plot_day(house_id, dt, savefile)
+                plot_day(house_id, dt, savefile, figsize=figsize)
             except TypeError:
                 # DataFrame has no columns b/c there's no data for that day.
                 pass
                 # print 'No data to plot for house{}_{}.pdf'.format(house_id, str(dt.date()))
             plt.close()
 
+        t1 = time.time()
+        print 'created plots for house {0} ({1:.2g} min)'.format(house_id, (t1 - t0)/60)
 
-def get_energy(dstats, house_id, dt, app_nums):
+
+def get_energy(dstats, house_id, d, app_nums):
     '''
     When there are multiple cols for an appliance, it adds them.
     '''
     if not app_nums:
         # If home doesn't have this appliance, return zero energy.
         return 0.
-    
+
     # Subset by house and appliance.
-    cols = ['EnergyAppliance{}'.format(s) for s in app_nums]
+    cols = [('EnergyAppliance{}'.format(s), 'sum') for s in app_nums]
     energy = dstats.loc[(dstats['House'] == house_id)][cols]
     
     # Subset by datetime.
-    energy = energy.loc[str(dt.date())]
+    energy = energy.loc[str(d)]
     
     return sum(energy.values)
 
@@ -343,33 +388,45 @@ def clean_daily_stats(dstats):
 
     print 'cleaning daily stats...'
 
-    conds = [
-        dstats[('RowNum', 'len')] < 500,
-        dstats[('UnixDiff', 'max')] > 0.25,  # 15 min
-        dstats['HourRange'] < 23.5,
-        # dstats[('PctAccountedEnergy', 'identity')] > float('inf'),
-        # dstats[('PctAccountedEnergy', 'std')] > float('inf'),
-        # dstats['SumToMainCorr'] < 0.25,
-        dstats[('Issues', 'mean')] > 0.05,
-        dstats['HoursInDay'] != 24,
-        dstats['House'].isin([1, 11, 21]),
-        dstats[('EnergyAppliance0', 'sum')] < 0
-    ]
+    conds = OrderedDict([
+        (('RowNum', 'len'), dstats[('RowNum', 'len')] < 500),
+        (('UnixDiff', 'max'), dstats[('UnixDiff', 'max')] > 0.25),  # 15 min
+        ('HourRange', dstats['HourRange'] < 23.5),
+        (('Issues', 'mean'), dstats[('Issues', 'mean')] > 0.05),
+        ('HoursInDay', dstats['HoursInDay'] != 24),
+        ('House', dstats['House'].isin([3,11,21]))  # solar panels
+        
+    ])
+    for app_num in range(10):
+        # Calculate total energy used by appliance.
+        col = ('Appliance{}'.format(app_num), 'mean')
+        conds[col] = dstats[col] < 0
+
+        col = ('Appliance{}'.format(app_num), 'median')
+        conds[col] = dstats[col] < 0
+
+        col = ('Appliance{}'.format(app_num), 'min')
+        conds[col] = dstats[col] < 0
+
+        col = ('EnergyAppliance{}'.format(app_num), 'sum')
+        conds[col] = dstats[col] < 0
+
     total_rows = dstats.shape[0]
     delete = pd.DataFrame({'Timestamp': dstats.index,
                            'Delete': np.zeros(total_rows, dtype=int)})
     delete.set_index('Timestamp', inplace=True)
-    for cond_num, cond in enumerate(conds):
+    for cond_num, (col, cond) in enumerate(conds.iteritems()):
         array = cond.as_matrix()
         rows_affected = sum(array)
         new_rows_deleted = sum([i == 0 and j == 1 for i, j in zip(delete['Delete'].values, array)])
         delete.loc[array] = 1
-        print 'Condition {}: {} ({:0.2g}%) rows affected in total, {} ({:0.2g}%) new'.format(
-            cond_num+1,
+        print '{} ({:0.2g}%) rows affected in total, {} ({:0.2g}%) new | Condition {} ({})'.format(
             rows_affected,
             rows_affected / total_rows * 100,
             new_rows_deleted,
-            new_rows_deleted / total_rows * 100
+            new_rows_deleted / total_rows * 100,
+            cond_num+1,
+            str(col)
         )
     rows_deleted = sum(delete['Delete'].values)
     print 'Total rows marked for deletion: {} ({:0.2g}%)'.format(rows_deleted, rows_deleted / total_rows * 100)
@@ -379,8 +436,56 @@ def clean_daily_stats(dstats):
     return dstats
 
 
-def create_data(house_ids, app_names, dstats, dir_data=None, desired_sample_rate=6, is_debug=True):
+def data_okay(house_id, d):
+    return dstats.loc[dstats['House']==house_id].loc[str(d)]['Delete'].values[0] == 0
+
+
+def get_all_dts_for_house(house_id, dt_range=None):
     
+    ts_series = load_ts(house_id)
+    dt_min = floor_time(ts2dt(int(ts_series.min())))
+    dt_max = floor_time(ts2dt(int(ts_series.max())))
+
+    # Account for weird issue where max date in numpy array is less than max date in
+    # aggregate stats dataframe. Notably, for house 8, datetime(2015,5,11)
+    # exists in the array but not in the dataframe.
+    dt_min_dstats = dstats.loc[dstats['House']==house_id].index.min()
+    dt_max_dstats = dstats.loc[dstats['House']==house_id].index.max()
+    if dt_min != dt_min_dstats or dt_max != dt_max_dstats:
+        print 'warning: fixing wrong min date ({} vs {}) or max date ({} vs {})'.format(
+            dt_min.date(),
+            dt_min_dstats.date(),
+            dt_max.date(),
+            dt_max_dstats.date())
+        dt_min = max(dt_min, dt_min_dstats)
+        dt_max = min(dt_max, dt_max_dstats)
+    
+    all_dts = [dt_min + timedelta(days=d) for d in range(0, (dt_max-dt_min).days+1)]
+    if dt_range is not None:
+        all_dts = [dt for dt in all_dts if dt > dt_range[0] and dt < dt_range[1]]  # only in given range
+    
+    return all_dts
+
+
+def get_aligned_ts_mask_for_day(ts_series, dt_start, desired_sample_rate):
+    
+    dt_end = dt_start + timedelta(days=1)
+    ts_mask = get_ts_mask(ts_series=ts_series,
+                        dt_start=dt_start)
+    ts_day_actual = ts_series[ts_mask]
+    ts_day_desired = range(dt2ts(dt_start) + desired_sample_rate,
+                           dt2ts(dt_end) + desired_sample_rate,
+                           desired_sample_rate)
+
+    return (align_arrays(ts_day_actual, ts_day_desired, padder=0), ts_mask)
+
+
+def create_real_data(house_ids, app_names, dstats, desired_sample_rate, dir_data=None, is_debug=True):
+    
+    
+    if is_debug:
+        print 'creating real data...'
+
     X = []
     Y = []
     x_house = []
@@ -389,7 +494,7 @@ def create_data(house_ids, app_names, dstats, dir_data=None, desired_sample_rate
     for house_id in house_ids:
         
         if is_debug:
-            print 'Creating data for house {}...'.format(house_id)
+            print 'creating real data for house {}...'.format(house_id)
             t0 = time.time()
 
         app_name2nums = OrderedDict()
@@ -398,25 +503,8 @@ def create_data(house_ids, app_names, dstats, dir_data=None, desired_sample_rate
 
         ts_series = load_ts(house_id)
         main = load_app(house_id, 0)
-
-        dt_min = floor_time(ts2dt(int(ts_series.min())))
-        dt_max = floor_time(ts2dt(int(ts_series.max())))
-
-        # Account for weird issue where max date in numpy array is less than max date in
-        # aggregate stats dataframe. Notably, for house 8, datetime(2015,5,11)
-        # exists in the array but not in the dataframe.
-        dt_min_dstats = dstats.loc[dstats['House']==house_id].index.min()
-        dt_max_dstats = dstats.loc[dstats['House']==house_id].index.max()
-        if dt_min != dt_min_dstats or dt_max != dt_max_dstats:
-            print 'warning: fixing wrong min date ({} vs {}) or max date ({} vs {})'.format(
-                dt_min.date(),
-                dt_min_dstats.date(),
-                dt_max.date(),
-                dt_max_dstats.date())
-            dt_min = max(dt_min, dt_min_dstats)
-            dt_max = min(dt_max, dt_max_dstats)
-
-        all_dts = [dt_min + timedelta(days=d) for d in range(0, (dt_max-dt_min).days+1)]
+        
+        all_dts = get_all_dts_for_house(house_id)
 
         for dt_start in all_dts:
 
@@ -425,24 +513,15 @@ def create_data(house_ids, app_names, dstats, dir_data=None, desired_sample_rate
             #     continue
 
             # Check if we want to process this data.
-            data_okay = dstats.loc[dstats['House']==house_id].loc[str(dt_start.date())]['Delete'].values[0] == 0
-            if not data_okay:
+            if not data_okay(house_id, dt_start.date()):
                 continue
 
-            dt_end = dt_start + timedelta(days=1)
-            ts_idx = get_ts_idx(ts_series=ts_series,
-                                dt_start=dt_start)
-            ts_day_actual = ts_series[ts_idx]
-            ts_day_desired = range(dt2ts(dt_start) + desired_sample_rate,
-                                   dt2ts(dt_end) + desired_sample_rate,
-                                   desired_sample_rate)
-                
-            aligned_idx = align_arrays(ts_day_actual, ts_day_desired, padder=0)
+            aligned_idx, ts_mask = get_aligned_ts_mask_for_day(ts_series, dt_start, desired_sample_rate)
 
-            x = main[ts_idx][aligned_idx]
+            x = main[ts_mask][aligned_idx]
             y = []
             for app_name in app_names:
-                y.append(get_energy(dstats, house_id, dt_start, app_name2nums[app_name]))
+                y.append(get_energy(dstats, house_id, dt_start.date(), app_name2nums[app_name]))
 
             X.append(x)
             x_house.append(house_id)
@@ -451,7 +530,7 @@ def create_data(house_ids, app_names, dstats, dir_data=None, desired_sample_rate
 
         if is_debug:
             t1 = time.time()
-            print 'Created data for house {0} ({1:.2g} min)'.format(house_id, (t1 - t0)/60)
+            print 'created real data for house {0} ({1:.2g} min)'.format(house_id, (t1 - t0)/60)
     
     if dir_data is not None:
         np.save(os.path.join(dir_data, 'X.npy'), X)
@@ -462,7 +541,231 @@ def create_data(house_ids, app_names, dstats, dir_data=None, desired_sample_rate
     return X, Y, x_house, x_date
 
 
+def create_bank_choices(dstats, app_names, house_ids, dt_range):
+
+    # Subset stats df
+    df = dstats.copy()
+    df = df.loc[df['Delete']==0]
+    df = df.loc[df['House'].isin(house_ids)]
+    df = df.loc[df.index >= dt_range[0]]
+    df = df.loc[df.index <= dt_range[1]]
+    
+    df = df[['House']]
+    
+    bank_choices = []
+    for app_name in app_names:
+        for house_id, app_num in get_house_app_tuples(app_name):
+            one_combo = df.loc[df['House']==house_id].copy()
+            one_combo['AppNum'] = app_num
+            one_combo['Appliance'] = app_name
+            bank_choices.append(one_combo)
+    bank_choices = pd.concat(bank_choices)
+    
+    return bank_choices
+
+
+def get_random_series_metadata(app_name, bank_choices):
+    row = bank_choices.loc[bank_choices['Appliance']==app_name].sample(1)
+    dt = dt64_to_datetime(row.index.values[0]).date()
+    house_id, app_num = row.as_matrix()[0][:-1].tolist()
+    return [house_id, app_num, dt]
+
+def get_aligned_series(house_id, app_num, dt, desired_sample_rate=6):
+    ts_series = load_ts(house_id)
+    if isinstance(dt, date):
+        dt = date_to_datetime(dt)
+    aligned_idx, ts_mask = get_aligned_ts_mask_for_day(ts_series, dt, desired_sample_rate)
+    app_series = load_app(house_id, app_num)
+    x = app_series[ts_mask][aligned_idx]
+    return x
+
+# def get_random_aligned_series_and_energy(app_name):
+#     return get_aligned_series(*get_random_series_metadata(app_name))
+
+
+# def create_bank_of_power_series(app_names, dir_data, desired_sample_rate):
+
+#     print 'creating bank of power series for appliances of interest...'
+
+#     X = []
+#     x_house = []
+#     x_date = []
+
+#     dir_bank = os.path.join(dir_data, 'bank')
+
+#     for app_name in app_names:
+
+#         print 'creating power series for {}...'.format(app_name)
+
+#         dir_bank_app = os.path.join(dir_bank, app_name)
+#         if os.path.exists(dir_bank_app):
+#             shutil.rmtree(dir_bank_app)
+#         os.makedirs(dir_bank_app)
+
+#         for house_id, app_num in get_house_app_tuples(app_name):
+
+#             print '    house {}, appliance {}...'.format(house_id, app_num)
+
+#             ts_series = load_ts(house_id)
+#             all_dts = get_all_dts_for_house(house_id)
+
+#             app_series = load_app(house_id, app_num)
+
+#             for dt_start in all_dts:
+
+#                 if not data_okay(house_id, dt_start.date()):
+#                     continue
+
+#                 aligned_idx, ts_mask = get_aligned_ts_mask_for_day(ts_series, dt_start, desired_sample_rate)
+#                 x = app_series[ts_mask][aligned_idx]
+
+#                 X.append(x)
+#                 x_house.append(house_id)
+#                 x_date.append(dt_start.date())
+
+#         # Save data for appliance.
+#         filename_and_np_array = [('power.npy', X),
+#                                  ('house.npy', x_house),
+#                                  ('date.npy', x_date)]
+#         for filename, np_array in filename_and_np_array:
+#             np.save(os.path.join(dir_bank_app, filename), np_array)
+                
+#     return X, x_house, x_date
+
+
+def create_synthetic_data(dstats, house_ids, dt_range, app_names, swap_prob, include_distractor_prob, is_debug=False):
+
+    desired_sample_rate = 6
+    bank_choices = create_bank_choices(dstats, app_names, house_ids, dt_range)
+
+    print 'creating synthetic data...'
+
+    X = []
+    Y = []
+    x_house = []
+    x_date = []
+
+    for house_id in house_ids:
+
+        print 'creating synthetic data based on house {}'.format(house_id)
+
+        ts_series = load_ts(house_id)
+        
+        all_dts = get_all_dts_for_house(house_id, dt_range)
+
+        for dt_start in all_dts:
+
+            print '    {}'.format(dt_start.date())
+
+            # Check if we want to process this data.
+            if not data_okay(house_id, dt_start):
+                continue
+
+            aligned_idx, ts_mask = get_aligned_ts_mask_for_day(ts_series, dt_start, desired_sample_rate)
+
+            # Initialize aggregate signal and energy of target appliances.
+            x = np.zeros(int(24 * 60 * 60 / desired_sample_rate), dtype=np.int16)
+            y = []
+
+            if is_debug:
+                print '        adding target appliance signals...'
+
+            for app_name in app_names:
+
+                app_nums = get_app_nums(house_id, app_name)
+
+                if is_debug:
+                    print '        app_name: {}, app_nums: {}'.format(app_name, app_nums)
+
+                if not app_nums:
+                    y.append(0.)
+                    if is_debug:
+                        print '        skipping (adding all zeros for x and y) since there`s no app'
+                    continue
+
+                x_app = np.zeros(int(24 * 60 * 60 / desired_sample_rate), dtype=np.int16)
+                y_app = 0.
+                for app_num in app_nums:
+
+                    if is_debug:
+                        print '        app_name: {}, app_num: {}'.format(app_name, app_num)
+
+                    # If the swap triggers, choose the appliance signal at random from homes that have that appliance.  ################################
+                    if np.random.rand() < swap_prob:
+                        house_id_rand, app_num_rand, d_rand = get_random_series_metadata(app_name, bank_choices)
+                        x_app += get_aligned_series(house_id_rand, app_num_rand, d_rand)
+                        y_app += get_energy(dstats, house_id_rand, d_rand, [app_num_rand])
+
+                        if is_debug:
+                            print '        swapping! random series: house {}, app num {}, date {}'.format(house_id_rand, app_num_rand, d_rand)
+                            print '        x_app: {}...'.format(x_app[:5])
+                            print '        y_app: {}'.format(y_app)
+
+                    # Otherwise, use actual data from home.
+                    else:
+                        x_app += load_app(house_id, app_num)[ts_mask][aligned_idx]
+                        y_app += get_energy(dstats, house_id, dt_start.date(), [app_num])
+
+                        if is_debug:
+                            print '        not swapping'
+                            print '        x_app: {}...'.format(x_app[:5])
+                            print '        y_app: {}'.format(y_app)
+
+                # Add target appliance signal to synthetic aggregate.
+                x += x_app
+                y.append(y_app)
+
+            # Add distractor appliances by iterating through appliances in home.
+            if is_debug:
+                print '        adding distractor appliance signals...'
+
+            for app_num in range(1, 10):  # don't include aggregate
+
+                if is_debug:
+                    print '        app_name: {}; app_num: {}'.format(get_app_name(house_id, app_num), app_num)
+
+                # If appliance *is* a target appliance or distractor prob *doesn't*
+                # trigger, then skip appliance.
+                if is_a_target_app(house_id, app_num) or not np.random.rand() < include_distractor_prob:
+                    if is_debug:
+                        '        is either target app or distractor prob doesn`t trigger' 
+                    continue
+                
+                # Add distractor signal to synthetic aggregate.
+                x_app = load_app(house_id, app_num)[ts_mask][aligned_idx]
+                x += x_app
+
+                if is_debug:
+                    print '        added distractor app'
+                    print '        x: {}...'.format(x_app[:5])
+                    print '        y: {}'.format(y_app)
+
+            if is_debug:
+                print '        agggregated x: {}...'.format(x[:5])
+                print '        y`s: {}'.format(y)
+
+            X.append(x)
+            x_house.append(house_id)
+            x_date.append(dt_start.date())
+            Y.append(y)
+
+        # Save data after every home, just in case something crashes.
+        # Later, when code is good, it'd be best to do this just once
+        # so you don't overwrite the prior files.
+        if dir_data is not None:
+            np.save(os.path.join(dir_data, 'X2.npy'), X)
+            np.save(os.path.join(dir_data, 'Y2.npy'), Y)
+            np.save(os.path.join(dir_data, 'x_house2.npy'), x_house)
+            np.save(os.path.join(dir_data, 'x_date2.npy'), x_date)
+
+    return X, Y, x_house, x_date
+
+
 if __name__ == '__main__':
+
+    desired_sample_rate = 6  # series created will have timestamps that are this many seconds apart
+    swap_prob = 1/2
+    include_distractor_prob = 1/2
 
     dir_proj = '/Users/sipola/Google Drive/education/coursework/graduate/edinburgh/dissertation/thesis'
     dir_data = os.path.join(dir_proj, 'data')
@@ -481,9 +784,9 @@ if __name__ == '__main__':
 
     apps = pd.read_csv(path_apps)
     app_dict = create_app_dict()
-    apps = apps_add_cols_from_patterns(app_dict)
+    apps = apps_add_cols_from_patterns(apps, app_dict)
 
-    get_house_app_tuples, get_app_nums, get_app_name = create_app_funs(apps, app_dict)
+    get_house_app_tuples, get_app_nums, get_app_name, is_a_target_app = create_app_funs(apps, app_dict, APP_NAMES)
     load_app, load_ts, load_issues = create_load_funs(dir_refit)
 
     # create_daily_plots(HOUSE_IDS, dir_run)
@@ -492,4 +795,8 @@ if __name__ == '__main__':
     dstats = pd.read_pickle(path_daily_stats)
     dstats = clean_daily_stats(dstats)
 
-    X, Y, x_house, x_date = create_data(HOUSE_IDS, APP_NAMES, dstats, dir_data)
+    # X, Y, x_house, x_date = create_real_data(HOUSE_IDS, APP_NAMES, dstats, desired_sample_rate, dir_data)
+    # X, x_house, x_date = create_bank_of_power_series(APP_NAMES, dir_data, desired_sample_rate)
+    # X, Y, x_house, x_date = create_synthetic_data(dstats, HOUSE_IDS, APP_NAMES, swap_prob, include_distractor_prob)
+    dt_range = [datetime(2015,5,27), datetime(2015,6,2)]
+    X, Y, x_house, x_date = create_synthetic_data(dstats, [4,6,8], dt_range, APP_NAMES, swap_prob, include_distractor_prob, is_debug=True)
