@@ -1,7 +1,9 @@
 '''
 TODO:
-> Only create synthetic data for days you want to train on.
-> Make sure distractor appliance counts are realistic instead of always choosing one signal.
+> Fix issue with "app_name" referring to either standardized (e.g., "washing machine",
+"fridge") and non-standardized (e.g., "washing machine (1)", "fridge-freezer"). Don't
+want to make mistake of searching for a non-standardized names in a list of standardized
+names...you will miss some.
 '''
 
 from __future__ import division
@@ -480,7 +482,7 @@ def get_aligned_ts_mask_for_day(ts_series, dt_start, desired_sample_rate):
     return (align_arrays(ts_day_actual, ts_day_desired, padder=0), ts_mask)
 
 
-def create_real_data(house_ids, app_names, dstats, desired_sample_rate, dir_data=None, is_debug=True):
+def create_real_data(house_ids, app_names, dstats, desired_sample_rate, save_dir=None, is_debug=True):
     
     
     if is_debug:
@@ -491,6 +493,12 @@ def create_real_data(house_ids, app_names, dstats, desired_sample_rate, dir_data
     x_house = []
     x_date = []
     
+    # OVERWERITE
+    if save_dir is not None:
+        if os.path.exists(save_dir):
+            shutil.rmtree(save_dir)
+        os.makedirs(save_dir)
+
     for house_id in house_ids:
         
         if is_debug:
@@ -532,16 +540,47 @@ def create_real_data(house_ids, app_names, dstats, desired_sample_rate, dir_data
             t1 = time.time()
             print 'created real data for house {0} ({1:.2g} min)'.format(house_id, (t1 - t0)/60)
     
-    if dir_data is not None:
-        np.save(os.path.join(dir_data, 'X.npy'), X)
-        np.save(os.path.join(dir_data, 'Y.npy'), Y)
-        np.save(os.path.join(dir_data, 'x_house.npy'), x_house)
-        np.save(os.path.join(dir_data, 'x_date.npy'), x_date)
+    if save_dir is not None:
+        np.save(os.path.join(save_dir, 'X.npy'), X)
+        np.save(os.path.join(save_dir, 'Y.npy'), Y)
+        np.save(os.path.join(save_dir, 'x_house.npy'), x_house)
+        np.save(os.path.join(save_dir, 'x_date.npy'), x_date)
     
     return X, Y, x_house, x_date
 
 
+## This is bad because it relies on the app name of the apps DataFrame
+# instead o
+# def create_bank_choices(dstats, app_names, house_ids, dt_range):
+
+#     # Subset stats df
+#     df = dstats.copy()
+#     df = df.loc[df['Delete']==0]
+#     df = df.loc[df['House'].isin(house_ids)]
+#     df = df.loc[df.index >= dt_range[0]]
+#     df = df.loc[df.index <= dt_range[1]]
+    
+#     df = df[['House']]
+    
+#     bank_choices = []
+    
+#     for house_id in house_ids:
+#         for app_num in range(1,10):
+#             one_combo = df.loc[df['House']==house_id].copy()
+#             one_combo['ApplianceNum'] = app_num
+#             one_combo['Appliance'] = get_app_name(house_id, app_num)
+#             one_combo['IsTarget'] = int(is_a_target_app(house_id, app_num))
+#             bank_choices.append(one_combo)
+#     bank_choices = pd.concat(bank_choices)
+    
+#     return bank_choices
+
+
 def create_bank_choices(dstats, app_names, house_ids, dt_range):
+
+    '''
+    Only includes target appliances.
+    '''
 
     # Subset stats df
     df = dstats.copy()
@@ -556,19 +595,28 @@ def create_bank_choices(dstats, app_names, house_ids, dt_range):
     for app_name in app_names:
         for house_id, app_num in get_house_app_tuples(app_name):
             one_combo = df.loc[df['House']==house_id].copy()
-            one_combo['AppNum'] = app_num
-            one_combo['Appliance'] = app_name
+            one_combo['ApplianceNum'] = app_num
+            one_combo['Appliance'] = app_name  # this is the "standardized" app name
             bank_choices.append(one_combo)
     bank_choices = pd.concat(bank_choices)
     
     return bank_choices
 
 
-def get_random_series_metadata(app_name, bank_choices):
-    row = bank_choices.loc[bank_choices['Appliance']==app_name].sample(1)
+def get_random_series_metadata(bank_choices, app_name=None):
+    
+    bc = bank_choices.copy()
+    
+    if app_name is not None:
+        bc = bc.loc[bc['Appliance']==app_name]
+    
+    row = bc.sample(1)
     dt = dt64_to_datetime(row.index.values[0]).date()
-    house_id, app_num = row.as_matrix()[0][:-1].tolist()
+    house_id = row['House'].values[0]
+    app_num = row['ApplianceNum'].values[0]
+    
     return [house_id, app_num, dt]
+
 
 def get_aligned_series(house_id, app_num, dt, desired_sample_rate=6):
     ts_series = load_ts(house_id)
@@ -633,10 +681,20 @@ def get_aligned_series(house_id, app_num, dt, desired_sample_rate=6):
 #     return X, x_house, x_date
 
 
-def create_synthetic_data(dstats, house_ids, dt_range, app_names, swap_prob, include_distractor_prob, is_debug=False):
+def create_synthetic_data(
+    dstats,
+    house_ids,
+    dt_range,
+    app_names,
+    swap_prob,
+    include_distractor_prob,
+    save_dir=None,
+    is_debug=False
+    ):
 
     desired_sample_rate = 6
     bank_choices = create_bank_choices(dstats, app_names, house_ids, dt_range)
+    # bank_choices = bank_choices.loc[bank_choices['IsTarget']==1]  # just want target apps
 
     print 'creating synthetic data...'
 
@@ -644,6 +702,11 @@ def create_synthetic_data(dstats, house_ids, dt_range, app_names, swap_prob, inc
     Y = []
     x_house = []
     x_date = []
+
+    if save_dir is not None:
+        if os.path.exists(save_dir):
+            shutil.rmtree(save_dir)
+        os.makedirs(save_dir)
 
     for house_id in house_ids:
 
@@ -670,6 +733,7 @@ def create_synthetic_data(dstats, house_ids, dt_range, app_names, swap_prob, inc
             if is_debug:
                 print '        adding target appliance signals...'
 
+            # Iterate over target appliances first so we have 
             for app_name in app_names:
 
                 app_nums = get_app_nums(house_id, app_name)
@@ -690,9 +754,9 @@ def create_synthetic_data(dstats, house_ids, dt_range, app_names, swap_prob, inc
                     if is_debug:
                         print '        app_name: {}, app_num: {}'.format(app_name, app_num)
 
-                    # If the swap triggers, choose the appliance signal at random from homes that have that appliance.  ################################
+                    # If the swap triggers, choose the appliance signal at random from homes that have that appliance.
                     if np.random.rand() < swap_prob:
-                        house_id_rand, app_num_rand, d_rand = get_random_series_metadata(app_name, bank_choices)
+                        house_id_rand, app_num_rand, d_rand = get_random_series_metadata(bank_choices, app_name)
                         x_app += get_aligned_series(house_id_rand, app_num_rand, d_rand)
                         y_app += get_energy(dstats, house_id_rand, d_rand, [app_num_rand])
 
@@ -728,7 +792,7 @@ def create_synthetic_data(dstats, house_ids, dt_range, app_names, swap_prob, inc
                 # trigger, then skip appliance.
                 if is_a_target_app(house_id, app_num) or not np.random.rand() < include_distractor_prob:
                     if is_debug:
-                        '        is either target app or distractor prob doesn`t trigger' 
+                        print '        is either target app or distractor prob doesn`t trigger' 
                     continue
                 
                 # Add distractor signal to synthetic aggregate.
@@ -737,8 +801,7 @@ def create_synthetic_data(dstats, house_ids, dt_range, app_names, swap_prob, inc
 
                 if is_debug:
                     print '        added distractor app'
-                    print '        x: {}...'.format(x_app[:5])
-                    print '        y: {}'.format(y_app)
+                    print '        x_app: {}...'.format(x_app[:5])
 
             if is_debug:
                 print '        agggregated x: {}...'.format(x[:5])
@@ -752,11 +815,11 @@ def create_synthetic_data(dstats, house_ids, dt_range, app_names, swap_prob, inc
         # Save data after every home, just in case something crashes.
         # Later, when code is good, it'd be best to do this just once
         # so you don't overwrite the prior files.
-        if dir_data is not None:
-            np.save(os.path.join(dir_data, 'X2.npy'), X)
-            np.save(os.path.join(dir_data, 'Y2.npy'), Y)
-            np.save(os.path.join(dir_data, 'x_house2.npy'), x_house)
-            np.save(os.path.join(dir_data, 'x_date2.npy'), x_date)
+        if save_dir is not None:
+            np.save(os.path.join(save_dir, 'X.npy'), X)
+            np.save(os.path.join(save_dir, 'Y.npy'), Y)
+            np.save(os.path.join(save_dir, 'x_house.npy'), x_house)
+            np.save(os.path.join(save_dir, 'x_date.npy'), x_date)
 
     return X, Y, x_house, x_date
 
@@ -766,10 +829,13 @@ if __name__ == '__main__':
     desired_sample_rate = 6  # series created will have timestamps that are this many seconds apart
     swap_prob = 1/2
     include_distractor_prob = 1/2
+    synthetic_data_runs = 3
 
     dir_proj = '/Users/sipola/Google Drive/education/coursework/graduate/edinburgh/dissertation/thesis'
     dir_data = os.path.join(dir_proj, 'data')
     dir_run = os.path.join(dir_proj, 'run', str(date.today()))
+    dir_run_synthetic = os.path.join(dir_run, 'synthetic')
+    dir_run_real = os.path.join(dir_run, 'real')
 
     dir_refit_csv = os.path.join(dir_data, 'CLEAN_REFIT_081116')
     dir_refit = os.path.join(dir_data, 'refit')
@@ -795,8 +861,50 @@ if __name__ == '__main__':
     dstats = pd.read_pickle(path_daily_stats)
     dstats = clean_daily_stats(dstats)
 
-    # X, Y, x_house, x_date = create_real_data(HOUSE_IDS, APP_NAMES, dstats, desired_sample_rate, dir_data)
+    # X, Y, x_house, x_date = create_real_data(HOUSE_IDS, APP_NAMES, dstats, desired_sample_rate, dir_run_real)
     # X, x_house, x_date = create_bank_of_power_series(APP_NAMES, dir_data, desired_sample_rate)
     # X, Y, x_house, x_date = create_synthetic_data(dstats, HOUSE_IDS, APP_NAMES, swap_prob, include_distractor_prob)
-    dt_range = [datetime(2015,5,27), datetime(2015,6,2)]
-    X, Y, x_house, x_date = create_synthetic_data(dstats, [4,6,8], dt_range, APP_NAMES, swap_prob, include_distractor_prob, is_debug=True)
+    dt_range = [datetime(2010,1,1), datetime(2015,2,28)]  # starts with date that's before start of study
+    house_ids_train_val = list(HOUSE_IDS)  # copy
+    house_ids_train_val.remove(2)  # for standard
+    house_ids_train_val.remove(9)  # for washer interaction
+    house_ids_train_val.remove(20)  # for fridge and freezer (will overpredict?)
+
+    '''
+    Possible test appliances.
+    2. fridge-freezer; standard otherwise
+    5. fridge-freezer; has tumble dryer
+    9. fridge-freezer; washer-dryer and washing machine
+    15. fridge-freezer; has tumble dryer
+    20. fridge and freezer; has tumble dryer
+
+    Bad test appliances (missing crucial target appliance or has bad data (solar)).
+    1: no kettle
+    4. no dishwasher
+    3. solar
+    6. no fridge-freezer
+    8. no dishwasher
+    7. no microwave
+    10. no kettle
+    11. solar
+    12. no dishwasher
+    13. no fridge/freezer
+    16. no kettle
+    17. no dishwasher
+    18. no kettle
+    19. no dishwasher
+    21. solar
+    '''
+
+    for run_num in range(3):
+        print '=============== RUN NUM {} ==============='.format(run_num+1)
+        X, Y, x_house, x_date = create_synthetic_data(
+            dstats,
+            house_ids_train_val,  # excludes 18, 19, 20, which will be used for testing
+            dt_range,
+            APP_NAMES,
+            swap_prob,
+            include_distractor_prob,
+            save_dir=os.path.join(dir_run_synthetic, str(run_num+1)),
+            is_debug=False
+            )
