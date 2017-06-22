@@ -397,7 +397,6 @@ def clean_daily_stats(dstats):
         (('Issues', 'mean'), dstats[('Issues', 'mean')] > 0.05),
         ('HoursInDay', dstats['HoursInDay'] != 24),
         ('House', dstats['House'].isin([3,11,21]))  # solar panels
-        
     ])
     for app_num in range(10):
         # Calculate total energy used by appliance.
@@ -442,7 +441,7 @@ def data_okay(house_id, d):
     return dstats.loc[dstats['House']==house_id].loc[str(d)]['Delete'].values[0] == 0
 
 
-def get_all_dts_for_house(house_id, dt_range=None):
+def get_all_dts_for_house(house_id, train_dts=None):
     
     ts_series = load_ts(house_id)
     dt_min = floor_time(ts2dt(int(ts_series.min())))
@@ -463,9 +462,9 @@ def get_all_dts_for_house(house_id, dt_range=None):
         dt_max = min(dt_max, dt_max_dstats)
     
     all_dts = [dt_min + timedelta(days=d) for d in range(0, (dt_max-dt_min).days+1)]
-    if dt_range is not None:
-        all_dts = [dt for dt in all_dts if dt > dt_range[0] and dt < dt_range[1]]  # only in given range
-    
+    if train_dts is not None:
+        all_dts = [dt for dt in all_dts if dt in train_dts]  # only in given range
+        
     return all_dts
 
 
@@ -549,34 +548,7 @@ def create_real_data(house_ids, app_names, dstats, desired_sample_rate, save_dir
     return X, Y, x_house, x_date
 
 
-## This is bad because it relies on the app name of the apps DataFrame
-# instead o
-# def create_bank_choices(dstats, app_names, house_ids, dt_range):
-
-#     # Subset stats df
-#     df = dstats.copy()
-#     df = df.loc[df['Delete']==0]
-#     df = df.loc[df['House'].isin(house_ids)]
-#     df = df.loc[df.index >= dt_range[0]]
-#     df = df.loc[df.index <= dt_range[1]]
-    
-#     df = df[['House']]
-    
-#     bank_choices = []
-    
-#     for house_id in house_ids:
-#         for app_num in range(1,10):
-#             one_combo = df.loc[df['House']==house_id].copy()
-#             one_combo['ApplianceNum'] = app_num
-#             one_combo['Appliance'] = get_app_name(house_id, app_num)
-#             one_combo['IsTarget'] = int(is_a_target_app(house_id, app_num))
-#             bank_choices.append(one_combo)
-#     bank_choices = pd.concat(bank_choices)
-    
-#     return bank_choices
-
-
-def create_bank_choices(dstats, app_names, house_ids, dt_range):
+def create_bank_choices(dstats, app_names, house_ids, train_dts):
 
     '''
     Only includes target appliances.
@@ -586,8 +558,7 @@ def create_bank_choices(dstats, app_names, house_ids, dt_range):
     df = dstats.copy()
     df = df.loc[df['Delete']==0]
     df = df.loc[df['House'].isin(house_ids)]
-    df = df.loc[df.index >= dt_range[0]]
-    df = df.loc[df.index <= dt_range[1]]
+    df = df.loc[df.index.isin(train_dts)]
     
     df = df[['House']]
     
@@ -684,7 +655,7 @@ def get_aligned_series(house_id, app_num, dt, desired_sample_rate=6):
 def create_synthetic_data(
     dstats,
     house_ids,
-    dt_range,
+    train_dts,
     app_names,
     swap_prob,
     include_distractor_prob,
@@ -693,7 +664,7 @@ def create_synthetic_data(
     ):
 
     desired_sample_rate = 6
-    bank_choices = create_bank_choices(dstats, app_names, house_ids, dt_range)
+    bank_choices = create_bank_choices(dstats, app_names, house_ids, train_dts)
     # bank_choices = bank_choices.loc[bank_choices['IsTarget']==1]  # just want target apps
 
     print 'creating synthetic data...'
@@ -714,7 +685,7 @@ def create_synthetic_data(
 
         ts_series = load_ts(house_id)
         
-        all_dts = get_all_dts_for_house(house_id, dt_range)
+        all_dts = get_all_dts_for_house(house_id, train_dts)
 
         for dt_start in all_dts:
 
@@ -849,42 +820,6 @@ def load_real_data(dir_for_model_real):
     return X, Y, x_house, x_date
 
 
-# def load_synth_data(dir_for_model_synth, n, seed=None):
-
-#     np.random.seed(seed=seed)
-
-#     num_runs = get_num_runs(dir_for_model_synth)
-#     n_per_run = (n // num_runs) + 1  # over-sample and cut down later to account for rounding error
-
-#     X = []
-#     Y = []
-#     x_house = []
-#     x_date = []
-#     for run_num in range(1,num_runs+1):
-
-#         dir_run_num = os.path.join(dir_for_model_synth, '{}'.format(run_num))
-
-#         X_run = np.load(os.path.join(dir_run_num, 'X.npy'))
-#         Y_run = np.load(os.path.join(dir_run_num, 'Y.npy'))
-#         x_house_run = np.load(os.path.join(dir_run_num, 'x_house.npy'))
-#         x_date_run = np.load(os.path.join(dir_run_num, 'x_date.npy'))
-
-#         # Sample random indices.
-#         idx = np.random.choice(np.arange(X_run.shape[0]), n_per_run, replace=False)
-
-#         X.append(X_run[idx])
-#         Y.append(Y_run[idx])
-#         x_house.append(x_house_run[idx])
-#         x_date.append(x_date_run[idx])
-
-#     X = np.concatenate(X)[:n]  # cuts down to correct number of obs
-#     Y = np.concatenate(Y)[:n]
-#     x_house = np.concatenate(x_house)[:n]
-#     x_date = np.concatenate(x_date)[:n]
-    
-#     return X, Y, x_house, x_date
-
-
 def load_synth_data(dir_for_model_synth, save=False):
 
     num_runs = get_num_runs(dir_for_model_synth)
@@ -921,12 +856,35 @@ def load_synth_data(dir_for_model_synth, save=False):
     return X, Y, x_house, x_date
 
 
+def get_train_dts(dstats, prop_train, save_dir=None, is_debug=False):
+
+    dstats_good = dstats.loc[dstats['Delete']==0]
+    good_days = dstats_good.index.values
+    good_days = np.array(list(set(good_days)))
+    train_dts = np.random.choice(good_days, size=int(len(good_days)*prop_train), replace=False)  # in np64 dtype
+    train_dts.sort()
+    if is_debug:
+        pct_train = dstats_good[dstats_good.index.isin(train_dts)].shape[0] / dstats_good.shape[0]
+        print '{:0.2g}% training data'.format(pct_train*100)
+
+    train_dts = [dt64_to_datetime(dt) for dt in train_dts]  # convert to datetime
+    if save_dir is not None:
+        try:
+            os.makedirs(save_dir)
+        except OSError:
+            pass
+        np.save(os.path.join(save_dir, 'train_dts.npy'), train_dts)
+
+    return train_dts
+
+
 if __name__ == '__main__':
 
     desired_sample_rate = 6  # series created will have timestamps that are this many seconds apart
     swap_prob = 1/2
     include_distractor_prob = 1/2
     synthetic_data_runs = 10
+    prop_train = 0.85
 
     dir_proj = '/Users/sipola/Google Drive/education/coursework/graduate/edinburgh/dissertation/thesis'
     dir_data = os.path.join(dir_proj, 'data')
@@ -960,11 +918,24 @@ if __name__ == '__main__':
     # dstats = create_daily_stats(HOUSE_IDS, pkl_path=path_daily_stats, nrow=None)
     dstats = pd.read_pickle(path_daily_stats)
     dstats = clean_daily_stats(dstats)
+    train_dts = get_train_dts(dstats, prop_train, save_dir=dir_run_synthetic)
 
-    X, Y, x_house, x_date = create_real_data(HOUSE_IDS, APP_NAMES, dstats, desired_sample_rate, dir_run_real)
-    # X, x_house, x_date = create_bank_of_power_series(APP_NAMES, dir_data, desired_sample_rate)
+    # X, Y, x_house, x_date = create_real_data(HOUSE_IDS, APP_NAMES, dstats, desired_sample_rate, dir_run_real)
 
-    '''
+    for run_num in range(1,synthetic_data_runs+1):
+        print '=============== RUN NUM {} ==============='.format(run_num)
+        X, Y, x_house, x_date = create_synthetic_data(
+            dstats,
+            HOUSE_IDS_TRAIN_VAL,
+            train_dts,
+            APP_NAMES,
+            swap_prob,
+            include_distractor_prob,
+            save_dir=os.path.join(dir_run_synthetic, str(run_num)),
+            is_debug=False
+            )
+
+        '''
     Possible test appliances.
     2. fridge-freezer; standard otherwise
     5. fridge-freezer; has tumble dryer
@@ -989,16 +960,3 @@ if __name__ == '__main__':
     19. no dishwasher
     21. solar
     '''
-
-    # for run_num in range(1,synthetic_data_runs+1):
-    #     print '=============== RUN NUM {} ==============='.format(run_num)
-    #     X, Y, x_house, x_date = create_synthetic_data(
-    #         dstats,
-    #         HOUSE_IDS_TRAIN_VAL,
-    #         [datetime(2010,1,1), TRAIN_VAL_DATE_MAX],
-    #         APP_NAMES,
-    #         swap_prob,
-    #         include_distractor_prob,
-    #         save_dir=os.path.join(dir_run_synthetic, str(run_num)),
-    #         is_debug=False
-    #         )
