@@ -824,12 +824,109 @@ def create_synthetic_data(
     return X, Y, x_house, x_date
 
 
+def get_num_runs(dir_for_model_synth):
+    '''
+    Gets number of times the synthetic data was run
+    '''
+    num_runs = 0
+    for filename in os.listdir(dir_for_model_synth):
+        try:
+            filename_int = int(filename)
+            num_runs = max(num_runs, filename_int)
+        except ValueError:
+            pass
+    return num_runs
+
+
+
+def load_real_data(dir_for_model_real):
+
+    X = np.load(os.path.join(dir_for_model_real, 'X.npy'))
+    Y = np.load(os.path.join(dir_for_model_real, 'Y.npy'))
+    x_house = np.load(os.path.join(dir_for_model_real, 'x_house.npy'))
+    x_date = np.load(os.path.join(dir_for_model_real, 'x_date.npy'))
+
+    return X, Y, x_house, x_date
+
+
+# def load_synth_data(dir_for_model_synth, n, seed=None):
+
+#     np.random.seed(seed=seed)
+
+#     num_runs = get_num_runs(dir_for_model_synth)
+#     n_per_run = (n // num_runs) + 1  # over-sample and cut down later to account for rounding error
+
+#     X = []
+#     Y = []
+#     x_house = []
+#     x_date = []
+#     for run_num in range(1,num_runs+1):
+
+#         dir_run_num = os.path.join(dir_for_model_synth, '{}'.format(run_num))
+
+#         X_run = np.load(os.path.join(dir_run_num, 'X.npy'))
+#         Y_run = np.load(os.path.join(dir_run_num, 'Y.npy'))
+#         x_house_run = np.load(os.path.join(dir_run_num, 'x_house.npy'))
+#         x_date_run = np.load(os.path.join(dir_run_num, 'x_date.npy'))
+
+#         # Sample random indices.
+#         idx = np.random.choice(np.arange(X_run.shape[0]), n_per_run, replace=False)
+
+#         X.append(X_run[idx])
+#         Y.append(Y_run[idx])
+#         x_house.append(x_house_run[idx])
+#         x_date.append(x_date_run[idx])
+
+#     X = np.concatenate(X)[:n]  # cuts down to correct number of obs
+#     Y = np.concatenate(Y)[:n]
+#     x_house = np.concatenate(x_house)[:n]
+#     x_date = np.concatenate(x_date)[:n]
+    
+#     return X, Y, x_house, x_date
+
+
+def load_synth_data(dir_for_model_synth, save=False):
+
+    num_runs = get_num_runs(dir_for_model_synth)
+
+    X = []
+    Y = []
+    x_house = []
+    x_date = []
+    for run_num in range(1,num_runs+1):
+
+        dir_run_num = os.path.join(dir_for_model_synth, '{}'.format(run_num))
+
+        X_run = np.load(os.path.join(dir_run_num, 'X.npy'))
+        Y_run = np.load(os.path.join(dir_run_num, 'Y.npy'))
+        x_house_run = np.load(os.path.join(dir_run_num, 'x_house.npy'))
+        x_date_run = np.load(os.path.join(dir_run_num, 'x_date.npy'))
+
+        X.append(X_run)
+        Y.append(Y_run)
+        x_house.append(x_house_run)
+        x_date.append(x_date_run)
+
+    X = np.concatenate(X)  # cuts down to correct number of obsw
+    Y = np.concatenate(Y)
+    x_house = np.concatenate(x_house)
+    x_date = np.concatenate(x_date)
+
+    if save:
+        np.save(os.path.join(dir_for_model_synth, 'X.npy'), X)
+        np.save(os.path.join(dir_for_model_synth, 'Y.npy'), Y)
+        np.save(os.path.join(dir_for_model_synth, 'x_house.npy'), x_house)
+        np.save(os.path.join(dir_for_model_synth, 'x_date.npy'), x_date)
+    
+    return X, Y, x_house, x_date
+
+
 if __name__ == '__main__':
 
     desired_sample_rate = 6  # series created will have timestamps that are this many seconds apart
     swap_prob = 1/2
     include_distractor_prob = 1/2
-    synthetic_data_runs = 3
+    synthetic_data_runs = 10
 
     dir_proj = '/Users/sipola/Google Drive/education/coursework/graduate/edinburgh/dissertation/thesis'
     dir_data = os.path.join(dir_proj, 'data')
@@ -845,6 +942,9 @@ if __name__ == '__main__':
 
     HOUSE_IDS = range(1, 22); HOUSE_IDS.remove(14)  # no house 14
     APP_NAMES = ['fridge', 'kettle', 'washing machine', 'dishwasher', 'microwave']
+    HOUSE_IDS_TEST = [2,9,20]
+    HOUSE_IDS_TRAIN_VAL = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_TEST]
+    TRAIN_VAL_DATE_MAX = datetime(2015,2,28)
 
     # save_refit_data(dir_refit_csv=dir_refit_csv, dir_refit_np=dir_refit, nrows=None)
 
@@ -861,14 +961,8 @@ if __name__ == '__main__':
     dstats = pd.read_pickle(path_daily_stats)
     dstats = clean_daily_stats(dstats)
 
-    # X, Y, x_house, x_date = create_real_data(HOUSE_IDS, APP_NAMES, dstats, desired_sample_rate, dir_run_real)
+    X, Y, x_house, x_date = create_real_data(HOUSE_IDS, APP_NAMES, dstats, desired_sample_rate, dir_run_real)
     # X, x_house, x_date = create_bank_of_power_series(APP_NAMES, dir_data, desired_sample_rate)
-    # X, Y, x_house, x_date = create_synthetic_data(dstats, HOUSE_IDS, APP_NAMES, swap_prob, include_distractor_prob)
-    dt_range = [datetime(2010,1,1), datetime(2015,2,28)]  # starts with date that's before start of study
-    house_ids_train_val = list(HOUSE_IDS)  # copy
-    house_ids_train_val.remove(2)  # for standard
-    house_ids_train_val.remove(9)  # for washer interaction
-    house_ids_train_val.remove(20)  # for fridge and freezer (will overpredict?)
 
     '''
     Possible test appliances.
@@ -896,15 +990,15 @@ if __name__ == '__main__':
     21. solar
     '''
 
-    for run_num in range(3):
-        print '=============== RUN NUM {} ==============='.format(run_num+1)
-        X, Y, x_house, x_date = create_synthetic_data(
-            dstats,
-            house_ids_train_val,  # excludes 18, 19, 20, which will be used for testing
-            dt_range,
-            APP_NAMES,
-            swap_prob,
-            include_distractor_prob,
-            save_dir=os.path.join(dir_run_synthetic, str(run_num+1)),
-            is_debug=False
-            )
+    # for run_num in range(1,synthetic_data_runs+1):
+    #     print '=============== RUN NUM {} ==============='.format(run_num)
+    #     X, Y, x_house, x_date = create_synthetic_data(
+    #         dstats,
+    #         HOUSE_IDS_TRAIN_VAL,
+    #         [datetime(2010,1,1), TRAIN_VAL_DATE_MAX],
+    #         APP_NAMES,
+    #         swap_prob,
+    #         include_distractor_prob,
+    #         save_dir=os.path.join(dir_run_synthetic, str(run_num)),
+    #         is_debug=False
+    #         )
