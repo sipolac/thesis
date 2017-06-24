@@ -8,6 +8,8 @@ names...you will miss some.
 
 from __future__ import division
 
+from utils import *
+
 import os
 import shutil
 import numpy as np
@@ -21,13 +23,12 @@ from datetime import date
 import matplotlib.pyplot as plt
 import matplotlib
 
-from utils import *
-
 matplotlib.style.use('ggplot')
 
 
 def load_house_csv(house_id, dir_refit_csv, nrows=None):
     '''
+    Load REFIT CSV for one home.
     '''
     csv_filename = os.path.join(dir_refit_csv, 'CLEAN_House{}.csv'.format(house_id))
     df = pd.read_csv(csv_filename, nrows=nrows)
@@ -37,6 +38,7 @@ def load_house_csv(house_id, dir_refit_csv, nrows=None):
 
 def save_refit_data(dir_refit_csv, dir_refit_np, nrows=None, house_ids=None):
     '''
+    Load REFIT data from CSVs and saves as numpy arrays.
     '''
 
     if house_ids is None:
@@ -76,6 +78,11 @@ def save_refit_data(dir_refit_csv, dir_refit_np, nrows=None, house_ids=None):
 
 
 def create_app_dict():
+    '''
+    Map standardized app name to column to be created in appliances dataframe
+    and to the pattern used to identify the appliance in the unstandardized
+    name.
+    '''
     return OrderedDict([
         ('fridge', {'col': 'Fridge', 'pattern': 'fridge'}),
         ('kettle', {'col': 'Kettle', 'pattern': 'kettle$'}),  # pattern ignores 'Kettle/Toaster'
@@ -86,6 +93,10 @@ def create_app_dict():
 
 
 def apps_add_cols_from_patterns(apps, app_dict):
+    '''
+    Add column for each target appliance identifying whether each row
+    has an appliance 
+    '''
     for (app_name, dct) in app_dict.items():
         app_col = dct['col']
         pattern = dct['pattern']
@@ -94,6 +105,10 @@ def apps_add_cols_from_patterns(apps, app_dict):
 
 
 def create_app_funs(apps, app_dict, app_names):
+    '''
+    Create functions that require data on appliances. Note that the apps dataframe
+    must have the additional appliance columns.
+    '''
 
     app_cols = [app_dict[app_name]['col'] for app_name in app_names]
 
@@ -122,6 +137,10 @@ def create_app_funs(apps, app_dict, app_names):
 
 def create_load_funs(dir_refit):
 
+    '''
+    Create functions that require the path to the saved REFIT data.
+    '''
+
     def load_app(house_id, app_num):
         np_path = 'Aggregate.npy' if app_num == 0 else 'Appliance{}.npy'.format(app_num)
         return np.load(os.path.join(dir_refit,
@@ -145,6 +164,7 @@ def get_ts_mask(ts_series, dt_start, dt_end=None):
     '''
     Get index for time of day without having to convert all timestamps in array to dateitmes.
     '''
+
     ts_start = dt2ts(dt_start)
     if dt_end is None:
         # Assume one day.
@@ -230,6 +250,9 @@ def plot_day(house_id, dt, savefile=None, figsize=(9,5), cols=None):
 
 
 def plot_date_range(house_id, dt_base, day_range=range(-7, 5), app_names=None, figsize=(11,2)):
+    '''
+    Make multiple daily plots for a house within a date range.
+    '''
     if isinstance(app_names, basestring):
         app_names = [app_names]  # if they were entered as string, convert to list for Pandas
     for day_delta in day_range:
@@ -242,7 +265,8 @@ def plot_date_range(house_id, dt_base, day_range=range(-7, 5), app_names=None, f
 
 def calc_stats_for_house(house_id, nrow=None):
     '''
-    Calculate daily summary stats for each home and some appliance in some home.
+    Calculate daily summary stats for each home, to be used in other parts of project,
+    e.g., determining which house/date combinations are good/clean enough for the model.
     '''
     
     WATTSEC_2_KWH = 1/3.6e6  # multiply by this to convert from Watt-sec to kWh
@@ -315,6 +339,9 @@ def calc_stats_for_house(house_id, nrow=None):
 
 
 def create_daily_stats(house_ids, pkl_path=None, nrow=None):
+    '''
+    Calculate daily statistics for all homes.
+    '''
 
     print 'calculating daily stats...'
 
@@ -337,8 +364,9 @@ def create_daily_stats(house_ids, pkl_path=None, nrow=None):
 
 
 def create_daily_plots(house_ids, dir_run, figsize=(9,5)):
-
-    # Plot day of data for all homes for various days (approx one plot per month).
+    '''
+    Plot day of data for all homes for various days (approx one plot per month).
+    '''
 
     print 'creating daily plots...'
 
@@ -370,7 +398,7 @@ def create_daily_plots(house_ids, dir_run, figsize=(9,5)):
 
 def get_energy(dstats, house_id, d, app_nums):
     '''
-    When there are multiple cols for an appliance, it adds them.
+    Get total energy for the day. When there are multiple cols for an appliance, add energies.
     '''
     if not app_nums:
         # If home doesn't have this appliance, return zero energy.
@@ -387,6 +415,9 @@ def get_energy(dstats, house_id, d, app_nums):
 
 
 def clean_daily_stats(dstats):
+    '''
+    Add column to indicate whether data should be used.
+    '''
 
     print 'cleaning daily stats...'
 
@@ -395,8 +426,8 @@ def clean_daily_stats(dstats):
         (('UnixDiff', 'max'), dstats[('UnixDiff', 'max')] > 0.25),  # 15 min
         ('HourRange', dstats['HourRange'] < 23.5),
         (('Issues', 'mean'), dstats[('Issues', 'mean')] > 0.05),
-        ('HoursInDay', dstats['HoursInDay'] != 24),
-        ('House', dstats['House'].isin([3,11,21]))  # solar panels
+        ('HoursInDay', dstats['HoursInDay'] != 24)
+        # ('House', dstats['House'].isin([3,11,21]))  # solar panels
     ])
     for app_num in range(10):
         # Calculate total energy used by appliance.
@@ -438,10 +469,19 @@ def clean_daily_stats(dstats):
 
 
 def data_okay(house_id, d):
+    '''
+    Test whether data for that house and date is okay for use in the model.
+    '''
     return dstats.loc[dstats['House']==house_id].loc[str(d)]['Delete'].values[0] == 0
 
 
 def get_all_dts_for_house(house_id, train_dts=None):
+    '''
+    Get all dates for the house (since some houses have data that starts earlier or
+    later than other houses). Optionally subsets for days to be used in training only,
+    which itself only includes days with "good" data; otherwise returns all days, good
+    or bad (bad days will be skipped later).
+    '''
     
     ts_series = load_ts(house_id)
     dt_min = floor_time(ts2dt(int(ts_series.min())))
@@ -469,10 +509,14 @@ def get_all_dts_for_house(house_id, train_dts=None):
 
 
 def get_aligned_ts_mask_for_day(ts_series, dt_start, desired_sample_rate):
+    '''
+    Return index to align timeseries arrays (one day of data), as well as
+    the mask used to subset the entire timeseries (all days) to that of the
+    single day.
+    '''
     
     dt_end = dt_start + timedelta(days=1)
-    ts_mask = get_ts_mask(ts_series=ts_series,
-                        dt_start=dt_start)
+    ts_mask = get_ts_mask(ts_series=ts_series, dt_start=dt_start)
     ts_day_actual = ts_series[ts_mask]
     ts_day_desired = range(dt2ts(dt_start) + desired_sample_rate,
                            dt2ts(dt_end) + desired_sample_rate,
@@ -482,7 +526,9 @@ def get_aligned_ts_mask_for_day(ts_series, dt_start, desired_sample_rate):
 
 
 def create_real_data(house_ids, app_names, dstats, desired_sample_rate, save_dir=None, is_debug=True):
-    
+    '''
+    Creates set of real (non-synthetic) data.
+    '''
     
     if is_debug:
         print 'creating real data...'
@@ -551,7 +597,10 @@ def create_real_data(house_ids, app_names, dstats, desired_sample_rate, save_dir
 def create_bank_choices(dstats, app_names, house_ids, train_dts):
 
     '''
-    Only includes target appliances.
+    Create dataframe of homes, days and appliances to be used when creating
+    synthetic data; determine which data is good for swapping with the target
+    appliance. E.g., if swap is triggered for a fridge signal, code searches
+    this dataframe for a home and date to find an alternative fridge signal.
     '''
 
     # Subset stats df
@@ -575,6 +624,10 @@ def create_bank_choices(dstats, app_names, house_ids, train_dts):
 
 
 def get_random_series_metadata(bank_choices, app_name=None):
+    '''
+    Return house, appliance number (i.e., column in REFIT data) and date for
+    alternative appliance signal given the bank of choices.
+    '''
     
     bc = bank_choices.copy()
     
@@ -590,6 +643,11 @@ def get_random_series_metadata(bank_choices, app_name=None):
 
 
 def get_aligned_series(house_id, app_num, dt, desired_sample_rate=6):
+    '''
+    Take house and appliance number (i.e., column in REFIT data) and return
+    power series where the timesteps have been standardized to be at the desired
+    sample rate.
+    '''
     ts_series = load_ts(house_id)
     if isinstance(dt, date):
         dt = date_to_datetime(dt)
@@ -597,59 +655,6 @@ def get_aligned_series(house_id, app_num, dt, desired_sample_rate=6):
     app_series = load_app(house_id, app_num)
     x = app_series[ts_mask][aligned_idx]
     return x
-
-# def get_random_aligned_series_and_energy(app_name):
-#     return get_aligned_series(*get_random_series_metadata(app_name))
-
-
-# def create_bank_of_power_series(app_names, dir_data, desired_sample_rate):
-
-#     print 'creating bank of power series for appliances of interest...'
-
-#     X = []
-#     x_house = []
-#     x_date = []
-
-#     dir_bank = os.path.join(dir_data, 'bank')
-
-#     for app_name in app_names:
-
-#         print 'creating power series for {}...'.format(app_name)
-
-#         dir_bank_app = os.path.join(dir_bank, app_name)
-#         if os.path.exists(dir_bank_app):
-#             shutil.rmtree(dir_bank_app)
-#         os.makedirs(dir_bank_app)
-
-#         for house_id, app_num in get_house_app_tuples(app_name):
-
-#             print '    house {}, appliance {}...'.format(house_id, app_num)
-
-#             ts_series = load_ts(house_id)
-#             all_dts = get_all_dts_for_house(house_id)
-
-#             app_series = load_app(house_id, app_num)
-
-#             for dt_start in all_dts:
-
-#                 if not data_okay(house_id, dt_start.date()):
-#                     continue
-
-#                 aligned_idx, ts_mask = get_aligned_ts_mask_for_day(ts_series, dt_start, desired_sample_rate)
-#                 x = app_series[ts_mask][aligned_idx]
-
-#                 X.append(x)
-#                 x_house.append(house_id)
-#                 x_date.append(dt_start.date())
-
-#         # Save data for appliance.
-#         filename_and_np_array = [('power.npy', X),
-#                                  ('house.npy', x_house),
-#                                  ('date.npy', x_date)]
-#         for filename, np_array in filename_and_np_array:
-#             np.save(os.path.join(dir_bank_app, filename), np_array)
-                
-#     return X, x_house, x_date
 
 
 def create_synthetic_data(
@@ -662,6 +667,11 @@ def create_synthetic_data(
     save_dir=None,
     is_debug=False
     ):
+    '''
+    Create synthetic data. Only does this for specific houses and datetimes so prevent
+    bleeding of information between training and val/test sets. Does this by iterating
+    through target appliances and 
+    '''
 
     desired_sample_rate = 6
     bank_choices = create_bank_choices(dstats, app_names, house_ids, train_dts)
@@ -704,7 +714,7 @@ def create_synthetic_data(
             if is_debug:
                 print '        adding target appliance signals...'
 
-            # Iterate over target appliances first so we have 
+            # Iterate over target appliances first so we can create the targets (total daily energy).
             for app_name in app_names:
 
                 app_nums = get_app_nums(house_id, app_name)
@@ -725,7 +735,8 @@ def create_synthetic_data(
                     if is_debug:
                         print '        app_name: {}, app_num: {}'.format(app_name, app_num)
 
-                    # If the swap triggers, choose the appliance signal at random from homes that have that appliance.
+                    # If the swap triggers, choose the appliance signal at random
+                    # from homes that have that appliance.
                     if np.random.rand() < swap_prob:
                         house_id_rand, app_num_rand, d_rand = get_random_series_metadata(bank_choices, app_name)
                         x_app += get_aligned_series(house_id_rand, app_num_rand, d_rand)
@@ -754,7 +765,7 @@ def create_synthetic_data(
             if is_debug:
                 print '        adding distractor appliance signals...'
 
-            for app_num in range(1, 10):  # don't include aggregate
+            for app_num in range(1, 10):  # don't include main signal
 
                 if is_debug:
                     print '        app_name: {}; app_num: {}'.format(get_app_name(house_id, app_num), app_num)
@@ -766,7 +777,7 @@ def create_synthetic_data(
                         print '        is either target app or distractor prob doesn`t trigger' 
                     continue
                 
-                # Add distractor signal to synthetic aggregate.
+                # Othereise, add distractor signal to synthetic aggregate.
                 x_app = load_app(house_id, app_num)[ts_mask][aligned_idx]
                 x += x_app
 
@@ -809,54 +820,10 @@ def get_num_runs(dir_for_model_synth):
     return num_runs
 
 
-
-def load_real_data(dir_for_model_real):
-
-    X = np.load(os.path.join(dir_for_model_real, 'X.npy'))
-    Y = np.load(os.path.join(dir_for_model_real, 'Y.npy'))
-    x_house = np.load(os.path.join(dir_for_model_real, 'x_house.npy'))
-    x_date = np.load(os.path.join(dir_for_model_real, 'x_date.npy'))
-
-    return X, Y, x_house, x_date
-
-
-def load_synth_data(dir_for_model_synth, save=False):
-
-    num_runs = get_num_runs(dir_for_model_synth)
-
-    X = []
-    Y = []
-    x_house = []
-    x_date = []
-    for run_num in range(1,num_runs+1):
-
-        dir_run_num = os.path.join(dir_for_model_synth, '{}'.format(run_num))
-
-        X_run = np.load(os.path.join(dir_run_num, 'X.npy'))
-        Y_run = np.load(os.path.join(dir_run_num, 'Y.npy'))
-        x_house_run = np.load(os.path.join(dir_run_num, 'x_house.npy'))
-        x_date_run = np.load(os.path.join(dir_run_num, 'x_date.npy'))
-
-        X.append(X_run)
-        Y.append(Y_run)
-        x_house.append(x_house_run)
-        x_date.append(x_date_run)
-
-    X = np.concatenate(X)  # cuts down to correct number of obsw
-    Y = np.concatenate(Y)
-    x_house = np.concatenate(x_house)
-    x_date = np.concatenate(x_date)
-
-    if save:
-        np.save(os.path.join(dir_for_model_synth, 'X.npy'), X)
-        np.save(os.path.join(dir_for_model_synth, 'Y.npy'), Y)
-        np.save(os.path.join(dir_for_model_synth, 'x_house.npy'), x_house)
-        np.save(os.path.join(dir_for_model_synth, 'x_date.npy'), x_date)
-    
-    return X, Y, x_house, x_date
-
-
 def get_train_dts(dstats, prop_train, save_dir=None, is_debug=False):
+    '''
+    Randomly samples datetimes to be used in training. Saves so it can be used 
+    '''
 
     dstats_good = dstats.loc[dstats['Delete']==0]
     good_days = dstats_good.index.values
@@ -902,6 +869,8 @@ if __name__ == '__main__':
     APP_NAMES = ['fridge', 'kettle', 'washing machine', 'dishwasher', 'microwave']
     HOUSE_IDS_TEST = [2,9,20]
     HOUSE_IDS_TRAIN_VAL = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_TEST]
+    HOUSE_IDS_SOLAR = [3,11,21]
+    HOUSE_IDS_NOT_SOLAR = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_SOLAR]
     TRAIN_VAL_DATE_MAX = datetime(2015,2,28)
 
     # save_refit_data(dir_refit_csv=dir_refit_csv, dir_refit_np=dir_refit, nrows=None)
@@ -920,8 +889,9 @@ if __name__ == '__main__':
     dstats = clean_daily_stats(dstats)
     train_dts = get_train_dts(dstats, prop_train, save_dir=dir_run_synthetic)
 
-    # X, Y, x_house, x_date = create_real_data(HOUSE_IDS, APP_NAMES, dstats, desired_sample_rate, dir_run_real)
+    X, Y, x_house, x_date = create_real_data(HOUSE_IDS, APP_NAMES, dstats, desired_sample_rate, dir_run_real)  # can remove solar later
 
+    # Create synthetic data.
     for run_num in range(1,synthetic_data_runs+1):
         print '=============== RUN NUM {} ==============='.format(run_num)
         X, Y, x_house, x_date = create_synthetic_data(
@@ -935,7 +905,18 @@ if __name__ == '__main__':
             is_debug=False
             )
 
-        '''
+    # X, Y, x_house, x_date = create_synthetic_data(
+    #     dstats,
+    #     HOUSE_IDS_TRAIN_VAL,
+    #     train_dts[-5:],
+    #     APP_NAMES,
+    #     swap_prob,
+    #     include_distractor_prob,
+    #     save_dir=os.path.join(dir_run_synthetic, str(1)),
+    #     is_debug=True
+    #     )
+
+    '''
     Possible test appliances.
     2. fridge-freezer; standard otherwise
     5. fridge-freezer; has tumble dryer

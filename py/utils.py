@@ -1,4 +1,6 @@
 
+from __future__ import division
+
 import numpy as np
 from datetime import datetime
 from datetime import timedelta
@@ -114,7 +116,7 @@ class MultinomialSampler(object):
     """
 
     def __init__(self, p, verbose=False):
-        n = len(p)
+        # n = len(p)
         p = p.astype(float) / sum(p)
         self._cdf = np.cumsum(p)
 
