@@ -17,6 +17,7 @@ data/Processed_Data_CSV/
 data/refit
 data/bank
 data/for_model
+data/models
 data/*.db
 data/*.7z
 data/*.pkl

@@ -8,16 +8,16 @@ import os
 import pandas as pd
 import numpy as np
 
-from datetime import datetime
-from datetime import timedelta
-from datetime import date
+from datetime import datetime, date, timedelta
 
 import matplotlib.pyplot as plt
 import matplotlib
 
-from keras.models import Sequential
-from keras.layers import Dense, Activation, Conv1D, MaxPooling1D, Flatten, Dropout
+import keras
 from keras import backend as K
+from keras.models import Sequential
+from keras.layers import Dense, Activation, Conv1D, MaxPooling1D, Flatten, Dropout, BatchNormalization
+from keras.callbacks import EarlyStopping, ModelCheckpoint
 
 from sklearn.utils import shuffle
 from sklearn.preprocessing import StandardScaler
@@ -163,47 +163,47 @@ def create_scalers_for_real_synth_both(all_data, X_idx):
     return scaler_real, scaler_synth, scaler_both
 
 
-def create_training_data(all_data, scaler_real, scaler_synth, scaler_both, X_idx, x_house_idx, synthetic_only=False, random_state=None):
-    '''
-    Combine real and sampled synthetic training data.
-    '''
-    n_train_real = all_data['real_train'][0].shape[0] 
-    if synthetic_only:
-        n_train_real *= 2
+# def create_training_data(all_data, scaler_real, scaler_synth, scaler_both, X_idx, x_house_idx, synthetic_only=False, random_state=None):
+#     '''
+#     Combine real and sampled synthetic training data.
+#     '''
+#     n_train_real = all_data['real_train'][0].shape[0] 
+#     if synthetic_only:
+#         n_train_real *= 2
 
-    # Randomly grab some of the synthetic data for training,
-    # making sure it's the same size as the real data. Ignore
-    # the rest of the split.
-    all_data['synth_train'] = train_test_split(
-        *all_data['synth_train_all'],
-        train_size=n_train_real,
-        stratify=all_data['synth_train_all'][x_house_idx],  # by house
-        random_state=random_state)[::2]  # takes the first of the output pairs, which has same # obs as real train
+#     # Randomly grab some of the synthetic data for training,
+#     # making sure it's the same size as the real data. Ignore
+#     # the rest of the split.
+#     all_data['synth_train'] = train_test_split(
+#         *all_data['synth_train_all'],
+#         train_size=n_train_real,
+#         stratify=all_data['synth_train_all'][x_house_idx],  # by house
+#         random_state=random_state)[::2]  # takes the first of the output pairs, which has same # obs as real train
 
-    all_data['train'] = []
-    for i, (r, s) in enumerate(zip(all_data['real_train'], all_data['synth_train'])):
+#     all_data['train'] = []
+#     for i, (r, s) in enumerate(zip(all_data['real_train'], all_data['synth_train'])):
 
-        if i == X_idx:
-            # Scale mean of real and synthetic series separately since levels of real is higher.
-            r = scaler_real.transform(r)
-            s = scaler_synth.transform(s)
+#         if i == X_idx:
+#             # Scale mean of real and synthetic series separately since levels of real is higher.
+#             r = scaler_real.transform(r)
+#             s = scaler_synth.transform(s)
 
-        # Sort of for debugging only: want to see if synth does better than real + synth.
-        if synthetic_only:
-            all_data['train'].append(s)
-            continue
+#         # Sort of for debugging only: want to see if synth does better than real + synth.
+#         if synthetic_only:
+#             all_data['train'].append(s)
+#             continue
 
-        all_data['train'].append(np.concatenate((r, s)))
+#         all_data['train'].append(np.concatenate((r, s)))
 
-    del all_data['synth_train']
+#     del all_data['synth_train']
 
-    # Now scale combined real/synthetic power series by std.
-    all_data['train'][X_idx] = scaler_both.transform(all_data['train'][X_idx])    
+#     # Now scale combined real/synthetic power series by std.
+#     all_data['train'][X_idx] = scaler_both.transform(all_data['train'][X_idx])    
 
-    # Mix up real and synth obs.
-    all_data['train'] = shuffle(*all_data['train'], random_state=random_state)
+#     # Mix up real and synth obs.
+#     all_data['train'] = shuffle(*all_data['train'], random_state=random_state)
 
-    return all_data['train']
+#     return all_data['train']
 
 
 def take_diff_df(X):
@@ -243,31 +243,78 @@ def scale_rows_of_array(X, with_mean, with_std):
     return StandardScaler(with_mean=with_mean, with_std=with_std).fit_transform(X.T).T
 
 
-def reshape_as_tensor(list_of_Xs):
+def reshape_as_tensor(X):
     '''
     Reshape input 2D dataframe (shape = (obs, features)) as tensor.
     '''
     image_data_format = K.image_data_format()
     assert image_data_format in ['channels_first', 'channels_last']
-    list_of_tensors = []
-    for X in list_of_Xs:
-        if image_data_format == 'channels_last':  # default on dev machine
-            X = X.reshape(X.shape[0], X.shape[1], 1)
-        else:
-            X = X.reshape(X.shape[0], 1, X.shape[1])
-        list_of_tensors.append(X)
-    return list_of_tensors
+    if image_data_format == 'channels_last':  # default on dev machine
+        X = X.reshape(X.shape[0], X.shape[1], 1)
+    else:
+        X = X.reshape(X.shape[0], 1, X.shape[1])
+    return X
 
 
-def get_chunk(X, chunk_num, total_chunks):
+def generate_data(
+    real_tup, synth_tup,
+    scaler_real, scaler_synth, scaler_both,
+    take_diff,
+    do_shuffle=True, random_state=None,
+    batch_size=32,
+    real_to_synth_ratio=0.5,
+    as_tensor=True
+):
     '''
-    Get chunks of array X by row. Chunks can be different sizes.
+    Combine real and sampled synthetic training data.
     '''
-    assert chunk_num < total_chunks  # b/c of zero-indexing
-    n_per_chunk = X.shape[0] / total_chunks
-    start_idx = int(chunk_num * n_per_chunk)
-    end_idx = int((chunk_num * n_per_chunk) + n_per_chunk)
-    return X[start_idx:end_idx]
+    if do_shuffle:
+        print 'shuffling...'
+        real_tup = shuffle(*real_tup, random_state=random_state)
+        synth_tup = shuffle(*synth_tup, random_state=random_state)
+    
+    if scaler_real is not None:
+        print 'scaling real data...'
+        real_tup = (scaler_real.transform(real_tup[0]), real_tup[1])
+        
+    if scaler_synth is not None:
+        print 'scaling synthetic data...'
+        synth_tup = (scaler_synth.transform(synth_tup[0]), synth_tup[1])
+        
+    if scaler_both is not None:
+        print 'scaling real and synthetic data jointly...'
+        real_tup = (scaler_both.transform(real_tup[0]), real_tup[1])
+        synth_tup = (scaler_both.transform(synth_tup[0]), synth_tup[1])
+    
+    n_real = real_tup[0].shape[0]  # total number of obs
+    n_synth = synth_tup[0].shape[0]
+    
+    batch_size_real = int(batch_size * real_to_synth_ratio)
+    batch_size_synth = batch_size - batch_size_real
+    
+    idx_real = np.arange(batch_size_real) % n_real
+    idx_synth = np.arange(batch_size_synth) % n_synth
+        
+    while True:
+
+        # Get real data for this batch.
+        Xr = real_tup[0][idx_real]
+        Yr = real_tup[1][idx_real]
+        idx_real = (idx_real + batch_size_real) % n_real  # vectorized; index cycles so all batches are same size
+        
+        # Get synthetic data for this batch.
+        Xs = synth_tup[0][idx_synth]
+        Ys = synth_tup[1][idx_synth]
+        idx_synth = (idx_synth + batch_size_synth) % n_synth
+        
+        # Combine.
+        X = np.concatenate((Xr, Xs))  # create X from combo of real and synth data
+        Y = np.concatenate((Yr, Ys))
+        
+        if as_tensor:
+            X = reshape_as_tensor(X)
+        
+        yield (X, Y)
 
 
 def extract_targets(all_data, split_type, app_name, app_names, Y_idx):
