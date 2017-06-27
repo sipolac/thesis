@@ -1,10 +1,18 @@
 
 from __future__ import division
 
+import os
 import numpy as np
 from datetime import datetime, timedelta
 import pandas as pd
 import matplotlib.pyplot as plt
+
+
+def makedirs2(path):
+    try:
+        os.makedirs(path)
+    except OSError:
+        pass
 
 
 def sigmoid(x):
@@ -144,3 +152,18 @@ def multinomial_sample(p):
     using the above class.
     """
     return MultinomialSampler(p).sample(1)[0]
+
+
+def weighted_choice(choices):
+    '''
+    Chooses randomly among alternatives given list of tuples (option, weight).
+    https://stackoverflow.com/a/3679747/4794432
+    '''
+    total = sum(w for c, w in choices)
+    r = np.random.uniform(0, total)
+    upto = 0
+    for c, w in choices:
+        if upto + w >= r:
+            return c
+        upto += w
+    assert False, "Shouldn't get here"
