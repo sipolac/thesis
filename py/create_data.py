@@ -26,6 +26,87 @@ import matplotlib
 matplotlib.style.use('ggplot')
 
 
+# def get_params_appliance():
+#     '''Defines parameters for all appliances of interest'''
+
+#     # Credit: Mingjun Zhong and Jack Kelly
+#     return {
+#         'kettle':{
+#             'windowlength':129,
+#             'on_power_threshold':2000,
+#             'max_on_power':3998,
+#             'mean':700,
+#             'std':1000,
+#             's2s_length':128
+#             },
+#         'microwave':{
+#             'windowlength':129,
+#             'on_power_threshold':200,
+#             'max_on_power':3969,
+#             'mean':500,
+#             'std':800,
+#             's2s_length':128},
+#         'fridge':{
+#             'windowlength':299,
+#             'on_power_threshold':50,
+#             'max_on_power':3323,
+#             'mean':200,
+#             'std':400,
+#             's2s_length':512},
+#         'dishwasher':{
+#             'windowlength':599,
+#             'on_power_threshold':10,
+#             'max_on_power':3964,
+#             'mean':700,
+#             'std':1000,
+#             's2s_length':1536},
+#         'washingmachine':{
+#             'windowlength':599,
+#             'on_power_threshold':20,
+#             'max_on_power':3999,
+#             'mean':400,
+#             'std':700,
+#             's2s_length':2000}
+#     }
+
+def make_app_params_dict():
+    '''Defines parameters for all appliances of interest'''
+
+    # Credit: Jack Kelly
+    return {
+        'kettle': {
+            'max_power': 3100,
+            'on_power_threshold': 2000,
+            'min_on_duration': 12,
+            'min_off_duration': 0
+            },
+        'fridge': {
+            'max_power': 300,
+            'on_power_threshold': 50,
+            'min_on_duration': 60,
+            'min_off_duration': 12
+            },
+        'washing machine': {
+            'max_power': 2500,
+            'on_power_threshold': 20,
+            'min_on_duration': 1800,
+            'min_off_duration': 160
+            },
+        'microwave': {
+            'max_power': 3000,
+            'on_power_threshold': 200,
+            'min_on_duration': 12,
+            'min_off_duration': 30
+            },
+        'dishwasher': {
+            'max_power': 2500,
+            'on_power_threshold': 10,
+            'min_on_duration': 1800,
+            'min_off_duration': 1800
+            }
+    }
+
+
 def load_house_csv(house_id, dir_refit_csv, nrows=None):
     '''
     Load REFIT CSV for one home.
@@ -200,7 +281,7 @@ def get_df(house_id, use_app_names=False, dt_start=None, dt_end=None, include_is
     
     if include_issues:
         # Add issues column.
-        df['Issues'] = load_issues(house_id)
+        df['Issues'] = load_issues(house_id)[ts_mask]
     
     return df
 
@@ -271,6 +352,9 @@ def calc_stats_for_house(house_id, nrow=None):
     
     WATTSEC_2_KWH = 1/3.6e6  # multiply by this to convert from Watt-sec to kWh
 
+
+    num_unique = lambda x: len(set(x))
+
     # Define functions to be used in aggregation.
     funs = OrderedDict([
         ('RowNum', len),
@@ -283,22 +367,23 @@ def calc_stats_for_house(house_id, nrow=None):
     ])
     for app_num in range(10):
         # Calculate total energy used by appliance.
-        funs['Appliance{}'.format(app_num)] = [np.mean, np.median, min, max]
+        funs['Appliance{}'.format(app_num)] = [np.mean, np.median, min, max, num_unique]
         funs['EnergyAppliance{}'.format(app_num)] = sum
     
     # Import timestamp data, calculate diffs (for calculating energy used by appliances), and set index (for grouping by day)
     ts_series = load_ts(house_id)
     df = pd.DataFrame({'Unix': ts_series})  # will convert to Time later
-    df['Issues'] = load_issues(house_id)
     if nrow is not None:
         df = df.iloc[range(nrow)]
     df['UnixDiff'] = df['Unix']  # will take diff later in grouping
-    df['RowNum'] = range(df.shape[0])
     df['Time'] = pd.to_datetime(df['Unix'], unit='s', utc=True)
+    del df['Unix']
     df.set_index('Time', inplace=True)
     # df = df.tz_localize('GMT').tz_convert(tz)
     df = df.groupby(pd.TimeGrouper(freq='D')).transform(lambda x: calc_diff(x, True, 6))
     df['Time'] = df.index  # need this twice: one for grouping and one for calculating stats
+    df['Issues'] = load_issues(house_id)  # need to do this after diff so they don't get zeroed out (was a bug!)
+    df['RowNum'] = range(df.shape[0])  # need to do after diff (though doesn't really matter if taking len())
     
     # Calculate energy used by appliances.
     df['EnergySumOfParts'] = np.zeros(df.shape[0], dtype=np.int)
@@ -533,8 +618,11 @@ def create_real_data(house_ids, app_names, dstats, desired_sample_rate, save_dir
     if is_debug:
         print 'creating real data...'
 
+    app_params = make_app_params_dict()
+
     X = []
-    Y = []
+    Y1 = []
+    Y2 = []
     x_house = []
     x_date = []
     
@@ -572,14 +660,25 @@ def create_real_data(house_ids, app_names, dstats, desired_sample_rate, save_dir
             aligned_idx, ts_mask = get_aligned_ts_mask_for_day(ts_series, dt_start, desired_sample_rate)
 
             x = main[ts_mask][aligned_idx]
-            y = []
+            y1 = []
+            y2 = []
+
             for app_name in app_names:
-                y.append(get_energy(dstats, house_id, dt_start.date(), app_name2nums[app_name]))
+
+                # Get number of activations for all occurences of target appliance.
+                y2_app = 0
+                for app_num in app_name2nums[app_name]:
+                    app_power = load_app(house_id, app_num)[ts_mask]
+                    y2_app += get_num_activations(app_power, ts_series[ts_mask], app_params[app_name])
+
+                y1.append(get_energy(dstats, house_id, dt_start.date(), app_name2nums[app_name]))
+                y2.append(y2_app)
 
             X.append(x)
             x_house.append(house_id)
             x_date.append(dt_start.date())
-            Y.append(y)
+            Y1.append(y1)
+            Y2.append(y2)
 
         if is_debug:
             t1 = time.time()
@@ -587,11 +686,12 @@ def create_real_data(house_ids, app_names, dstats, desired_sample_rate, save_dir
     
     if save_dir is not None:
         np.save(os.path.join(save_dir, 'X.npy'), X)
-        np.save(os.path.join(save_dir, 'Y.npy'), Y)
+        np.save(os.path.join(save_dir, 'Y1.npy'), Y1)
+        np.save(os.path.join(save_dir, 'Y2.npy'), Y2)
         np.save(os.path.join(save_dir, 'x_house.npy'), x_house)
         np.save(os.path.join(save_dir, 'x_date.npy'), x_date)
     
-    return X, Y, x_house, x_date
+    return X, Y1, Y2, x_house, x_date
 
 
 def create_bank_choices(dstats, app_names, house_ids, train_dts):
@@ -680,7 +780,8 @@ def create_synthetic_data(
     print 'creating synthetic data...'
 
     X = []
-    Y = []
+    Y1 = []
+    Y2 = []
     x_house = []
     x_date = []
 
@@ -709,7 +810,8 @@ def create_synthetic_data(
 
             # Initialize aggregate signal and energy of target appliances.
             x = np.zeros(int(24 * 60 * 60 / desired_sample_rate), dtype=np.int16)
-            y = []
+            y1 = []
+            y2 = []
 
             if is_debug:
                 print '        adding target appliance signals...'
@@ -729,7 +831,9 @@ def create_synthetic_data(
                     continue
 
                 x_app = np.zeros(int(24 * 60 * 60 / desired_sample_rate), dtype=np.int16)
-                y_app = 0.
+                y1_app = 0.
+                y2_app = 0
+
                 for app_num in app_nums:
 
                     if is_debug:
@@ -808,7 +912,7 @@ def create_synthetic_data(
 
 def get_num_runs(dir_for_model_synth):
     '''
-    Gets number of times the synthetic data was run
+    Gets number of times the synthetic data was run.
     '''
     num_runs = 0
     for filename in os.listdir(dir_for_model_synth):
@@ -822,7 +926,7 @@ def get_num_runs(dir_for_model_synth):
 
 def get_train_dts(dstats, prop_train, save_dir=None, is_debug=False):
     '''
-    Randomly samples datetimes to be used in training. Saves so it can be used 
+    Randomly samples datetimes to be used in training. Saves it so it can be referenced later.
     '''
 
     dstats_good = dstats.loc[dstats['Delete']==0]
@@ -845,6 +949,111 @@ def get_train_dts(dstats, prop_train, save_dir=None, is_debug=False):
     return train_dts
 
 
+def get_activations(chunk, min_off_duration=0, min_on_duration=0,
+                    border=1, on_power_threshold=5, max_power=None):
+    """
+    Credit: Jack Kelly and NILMTK package.
+    
+    Included max_power=None just so that params could be entered as
+    kwargs.
+    
+    https://github.com/nilmtk/nilmtk/blob/master/nilmtk/electric.py
+    
+    
+    Returns runs of an appliance.
+    Most appliances spend a lot of their time off.  This function finds
+    periods when the appliance is on.
+    Parameters
+    ----------
+    chunk : pd.Series
+    min_off_duration : int
+        If min_off_duration > 0 then ignore 'off' periods less than
+        min_off_duration seconds of sub-threshold power consumption
+        (e.g. a washing machine might draw no power for a short
+        period while the clothes soak.)  Defaults to 0.
+    min_on_duration : int
+        Any activation lasting less seconds than min_on_duration will be
+        ignored.  Defaults to 0.
+    border : int
+        Number of rows to include before and after the detected activation
+    on_power_threshold : int or float
+        Watts
+    Returns
+    -------
+    list of pd.Series.  Each series contains one activation.
+    """
+    when_on = chunk >= on_power_threshold
+
+    # Find state changes
+    state_changes = when_on.astype(np.int8).diff()
+    del when_on
+    switch_on_events = np.where(state_changes == 1)[0]
+    switch_off_events = np.where(state_changes == -1)[0]
+    del state_changes
+
+    if len(switch_on_events) == 0 or len(switch_off_events) == 0:
+        return []
+
+    # Make sure events align
+    if switch_off_events[0] < switch_on_events[0]:
+        switch_off_events = switch_off_events[1:]
+        if len(switch_off_events) == 0:
+            return []
+    if switch_on_events[-1] > switch_off_events[-1]:
+        switch_on_events = switch_on_events[:-1]
+        if len(switch_on_events) == 0:
+            return []
+    assert len(switch_on_events) == len(switch_off_events)
+
+    # Smooth over off-durations less than min_off_duration
+    if min_off_duration > 0:
+        off_durations = (chunk.index[switch_on_events[1:]].values -
+                         chunk.index[switch_off_events[:-1]].values)
+
+        off_durations = timedelta64_to_secs(off_durations)
+
+        above_threshold_off_durations = np.where(
+            off_durations >= min_off_duration)[0]
+
+        # Now remove off_events and on_events
+        switch_off_events = switch_off_events[
+            np.concatenate([above_threshold_off_durations,
+                            [len(switch_off_events)-1]])]
+        switch_on_events = switch_on_events[
+            np.concatenate([[0], above_threshold_off_durations+1])]
+    assert len(switch_on_events) == len(switch_off_events)
+
+    activations = []
+    for on, off in zip(switch_on_events, switch_off_events):
+        duration = (chunk.index[off] - chunk.index[on]).total_seconds()
+        if duration < min_on_duration:
+            continue
+        on -= 1 + border
+        if on < 0:
+            on = 0
+        off += border
+        activation = chunk.iloc[on:off]
+        # throw away any activation with any NaN values
+        if not activation.isnull().values.any():
+            activations.append(activation)
+
+    return activations
+
+
+def get_num_activations(app_power, ts_series, app_params):
+    
+    # Chunk is NILM terminology for a power series.
+    chunk = pd.Series(
+        app_power,
+        index=pd.to_datetime(ts_series, unit='s', utc=True)
+    )
+    
+    # Get list of series that have activations.
+    activations = get_activations(chunk, border=1, **app_params)
+    
+    return len(activations)
+
+
 if __name__ == '__main__':
 
     desired_sample_rate = 6  # series created will have timestamps that are this many seconds apart
@@ -858,6 +1067,7 @@ if __name__ == '__main__':
     dir_run = os.path.join(dir_proj, 'run', str(date.today()))
     dir_run_synthetic = os.path.join(dir_run, 'synthetic')
     dir_run_real = os.path.join(dir_run, 'real')
+    dir_for_model = os.path.join(dir_data, 'for_model')
 
     dir_refit_csv = os.path.join(dir_data, 'CLEAN_REFIT_081116')
     dir_refit = os.path.join(dir_data, 'refit')
@@ -871,7 +1081,7 @@ if __name__ == '__main__':
     HOUSE_IDS_TRAIN_VAL = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_TEST]
     HOUSE_IDS_SOLAR = [3,11,21]
     HOUSE_IDS_NOT_SOLAR = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_SOLAR]
-    TRAIN_VAL_DATE_MAX = datetime(2015,2,28)
+    # TRAIN_VAL_DATE_MAX = datetime(2015,2,28)
 
     # save_refit_data(dir_refit_csv=dir_refit_csv, dir_refit_np=dir_refit, nrows=None)
 
@@ -884,26 +1094,27 @@ if __name__ == '__main__':
 
     # create_daily_plots(HOUSE_IDS, dir_run)
 
-    # dstats = create_daily_stats(HOUSE_IDS, pkl_path=path_daily_stats, nrow=None)
-    dstats = pd.read_pickle(path_daily_stats)
-    dstats = clean_daily_stats(dstats)
-    train_dts = get_train_dts(dstats, prop_train, save_dir=dir_run_synthetic)
+    dstats = create_daily_stats(HOUSE_IDS, pkl_path=path_daily_stats, nrow=None)
+    # dstats = pd.read_pickle(path_daily_stats)
+    # dstats = clean_daily_stats(dstats)
+    # train_dts = get_train_dts(dstats, prop_train, save_dir=dir_run_synthetic)
+    # train_dts = np.load(os.path.join(dir_run, 'train_dts.npy'))
 
-    X, Y, x_house, x_date = create_real_data(HOUSE_IDS, APP_NAMES, dstats, desired_sample_rate, dir_run_real)  # can remove solar later
+    # X, Y1, Y2, x_house, x_date = create_real_data(HOUSE_IDS, APP_NAMES, dstats, desired_sample_rate, dir_run_real)  # can remove solar later
 
-    # Create synthetic data.
-    for run_num in range(1,synthetic_data_runs+1):
-        print '=============== RUN NUM {} ==============='.format(run_num)
-        X, Y, x_house, x_date = create_synthetic_data(
-            dstats,
-            HOUSE_IDS_TRAIN_VAL,
-            train_dts,
-            APP_NAMES,
-            swap_prob,
-            include_distractor_prob,
-            save_dir=os.path.join(dir_run_synthetic, str(run_num)),
-            is_debug=False
-            )
+    # # Create synthetic data.
+    # for run_num in range(1,synthetic_data_runs+1):
+    #     print '=============== RUN NUM {} ==============='.format(run_num)
+    #     X, Y, x_house, x_date = create_synthetic_data(
+    #         dstats,
+    #         HOUSE_IDS_TRAIN_VAL,
+    #         train_dts,
+    #         APP_NAMES,
+    #         swap_prob,
+    #         include_distractor_prob,
+    #         save_dir=os.path.join(dir_run_synthetic, str(run_num)),
+    #         is_debug=False
+    #         )
 
     # X, Y, x_house, x_date = create_synthetic_data(
     #     dstats,

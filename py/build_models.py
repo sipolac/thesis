@@ -11,6 +11,8 @@ import re
 
 from datetime import datetime, date, timedelta
 
+import cPickle as pickle
+
 import matplotlib.pyplot as plt
 import matplotlib
 
@@ -228,36 +230,36 @@ def generate_data(
     Combine real and sampled synthetic training data.
     '''
 
-    real_path = os.path.join(save_dir, 'real.npy')
-    synth_path = os.path.join(save_dir, 'synth.npy')
+    # real_path = os.path.join(save_dir, 'real_generator.pkl')
+    # synth_path = os.path.join(save_dir, 'synth_generator.pkl')
 
-    if use_saved:
-        print 'loading saved data for generator...'
-        real_tup = np.load(real_path)
-        synth_tup = np.load(synth_path)
+    # if use_saved:
+    #     print 'loading saved data for generator...'
+    #     real_tup = pickle.load(open(real_path))
+    #     synth_tup = pickle.load(open(synth_path))
 
-    else:
-        if do_shuffle:
-            print 'shuffling...'
-            real_tup = shuffle(*real_tup, random_state=random_state)
-            synth_tup = shuffle(*synth_tup, random_state=random_state)
+    # else:
+    if do_shuffle:
+        print 'shuffling...'
+        real_tup = shuffle(*real_tup, random_state=random_state)
+        synth_tup = shuffle(*synth_tup, random_state=random_state)
+    
+    if scaler_real is not None:
+        print 'scaling real data...'
+        real_tup = (scaler_real.transform(real_tup[0]), real_tup[1])
         
-        if scaler_real is not None:
-            print 'scaling real data...'
-            real_tup = (scaler_real.transform(real_tup[0]), real_tup[1])
-            
-        if scaler_synth is not None:
-            print 'scaling synthetic data...'
-            synth_tup = (scaler_synth.transform(synth_tup[0]), synth_tup[1])
-            
-        if scaler_both is not None:
-            print 'scaling real and synthetic data jointly...'
-            real_tup = (scaler_both.transform(real_tup[0]), real_tup[1])
-            synth_tup = (scaler_both.transform(synth_tup[0]), synth_tup[1])
+    if scaler_synth is not None:
+        print 'scaling synthetic data...'
+        synth_tup = (scaler_synth.transform(synth_tup[0]), synth_tup[1])
+        
+    if scaler_both is not None:
+        print 'scaling real and synthetic data jointly...'
+        real_tup = (scaler_both.transform(real_tup[0]), real_tup[1])
+        synth_tup = (scaler_both.transform(synth_tup[0]), synth_tup[1])
 
-        print 'saving for easy load later...'
-        np.save(real_tup, real_path)
-        np.save(synth_tup, synth_path)
+        # print 'saving for easy load later...'
+        # pickle.dump(real_tup, open(real_path, 'wb'))
+        # pickle.dump(synth_tup, open(synth_path, 'wb'))
 
     n_real = real_tup[0].shape[0]  # total number of obs
     n_synth = synth_tup[0].shape[0]
@@ -324,15 +326,15 @@ def get_model_files(path):
 
 def random_params():
     return {
-        'num_conv_layers': np.random.randint(1, 4),
-        'num_dense_layers': np.random.randint(0, 3),
-        'start_filters': np.random.choice([2, 4, 8, 16]),
+        'num_conv_layers': np.random.randint(1, 6),
+        'num_dense_layers': np.random.randint(0, 5),
+        'start_filters': np.random.choice([2, 4, 8, 16, 32]),
         'deepen_filters': np.random.random() < 0.5,
-        'kernel_size': weighted_choice([(3, 1), (6, 1), (12, 0.5), (24, 0.5)]),
-        'strides': weighted_choice([(1, 1), (2, 1), (3, 0.5)]),
-        'dilation_rate': weighted_choice([(1, 1), (1, 0.25), (3, 0.25)]),
+        'kernel_size': weighted_choice([(3, 1), (6, 1), (12, 1), (24, 1)]),
+        'strides': weighted_choice([(1, 1), (2, 1), (3, 1)]),
+        'dilation_rate': weighted_choice([(1, 1), (2, 0.13), (3, 0.13)]),
         'do_pool': np.random.random() < 0.5,
-        'pool_size': weighted_choice([(2, 1), (4, 0.5)]),
+        'pool_size': weighted_choice([(2, 1), (4, 1), (8, 1)]),
         'last_dense_layer_size': np.random.choice([8, 16, 32]),
         'dropout_rate_after_conv': np.random.choice([0, 0.1, 0.25, 0.5]),
         'dropout_rate_after_dense': np.random.choice([0, 0.1, 0.25, 0.5]),

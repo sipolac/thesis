@@ -64,6 +64,27 @@ def dt64_to_datetime(dt64):
     return datetime.utcfromtimestamp(dt64.astype(int) * ns)
 
 
+def timedelta64_to_secs(timedelta):
+    """
+    Credit: Jack Kelly and NILMTK package:
+    http://nilmtk.github.io/nilmtk/v0.1.1/_modules/nilmtk/utils.html#timedelta64_to_secs
+
+    Convert `timedelta` to seconds.
+
+    Parameters
+    ----------
+    timedelta : np.timedelta64
+
+    Returns
+    -------
+    float : seconds
+    """
+    if len(timedelta) == 0:
+        return np.array([])
+    else:
+        return timedelta / np.timedelta64(1, 's')
+
+
 def array_to_1d(x):
     return np.squeeze(np.asarray(x))
 
@@ -108,8 +129,8 @@ def align_arrays(actual, desired, padder=None, is_debug=False):
     return idx
 
 
-def plot_series(x):
-    return pd.Series(x, index=range(len(x))).plot()
+def plot_series(x, figsize=(11,2)):
+    return pd.Series(x, index=range(len(x))).plot(figsize=figsize)
 
 
 def plot_empir_cum(x):
