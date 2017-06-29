@@ -188,3 +188,50 @@ def weighted_choice(choices):
             return c
         upto += w
     assert False, "Shouldn't get here"
+
+
+def repeats_above_value(x, val, get_longest_only=False):
+    '''
+    Get number of elements above x that are greater than val and same as the previous
+    data element. get_longest_only only calculates the longest stretch of repeats
+    instead of all of them.
+    '''
+
+    # # Slower but simpler version. Calculates all values in run,
+    # # not just the repeats.
+    # counter = 0
+    # max_count = 0
+    # for i in range(1, len(x)):
+    #     if x[i] == x[i-1] and x[i] > val:
+    #         counter += 1
+    #         if counter > max_count:
+    #             max_count = counter
+    #     else:
+    #         counter = 0
+    # return max_count
+
+    mask_above_val = x > val
+    mask_diff = np.concatenate([[False], np.diff(x) == 0])
+    idx = np.where(mask_above_val & mask_diff)[0]
+    
+    if get_longest_only:
+        
+        # idx = np.where(mask_above_val & mask_diff)[0]
+        if len(idx)==0:
+            return 0
+
+        counter = 1
+        max_count = 1
+        for i in range(1, len(idx)):
+            if idx[i] == idx[i-1] + 1:
+                counter += 1
+                if counter > max_count:
+                    max_count = counter
+            else:
+                counter = 1
+        return max_count
+
+    else:
+
+        return len(idx)  # faster than summing over masks
+

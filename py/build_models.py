@@ -210,9 +210,11 @@ def reshape_as_tensor(X):
     image_data_format = K.image_data_format()
     assert image_data_format in ['channels_first', 'channels_last']
     if image_data_format == 'channels_last':  # default on dev machine
-        X = X.reshape(X.shape[0], X.shape[1], 1)
+        # X = X.reshape(X.shape[0], X.shape[1], 1)
+        X = np.expand_dims(X, 2)
     else:
-        X = X.reshape(X.shape[0], 1, X.shape[1])
+        # X = X.reshape(X.shape[0], 1, X.shape[1])
+        X = np.expand_dims(X, 1)
     return X
 
 

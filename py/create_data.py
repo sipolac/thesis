@@ -76,7 +76,8 @@ def make_app_params_dict():
     return {
         'kettle': {
             'max_power': 3100,
-            'on_power_threshold': 2000,
+            # 'on_power_threshold': 2000,
+            'on_power_threshold': 1500,
             'min_on_duration': 12,
             'min_off_duration': 0
             },
@@ -286,7 +287,7 @@ def get_df(house_id, use_app_names=False, dt_start=None, dt_end=None, include_is
     return df
 
 
-def plot_day(house_id, dt, savefile=None, figsize=(9,5), cols=None):
+def plot_day(house_id, dt, savefile=None, figsize=(9,5), cols=None, title=None):
     '''
     Plot time series of power data for each appliance, for specified house and date(time).
     '''
@@ -310,7 +311,8 @@ def plot_day(house_id, dt, savefile=None, figsize=(9,5), cols=None):
     # ax = df.plot(figsize=figsize)
     for app_name in app_names:
         ax = df[app_name].plot(figsize=figsize)
-    ax.set_title('House {}\n{}'.format(house_id, dt.date().strftime('%Y-%m-%d')))
+    if title is None:
+        ax.set_title('House {}\n{}'.format(house_id, dt.date().strftime('%Y-%m-%d')))
     ax.set_xlabel('')
     ax.set_ylabel('Power (Watts)')
     # plt.xticks(np.arange(min(df.index), max(df.index)+1, 8.))
@@ -351,9 +353,17 @@ def calc_stats_for_house(house_id, nrow=None):
     '''
     
     WATTSEC_2_KWH = 1/3.6e6  # multiply by this to convert from Watt-sec to kWh
-
-
-    num_unique = lambda x: len(set(x))
+    
+    # num_unique = lambda x: len(set(x))
+    def prop_unchanging_large_value(x):
+        '''
+        Proportion of elements of x that are unchanging from the last elements and
+        above value specified below.
+        '''
+        if len(x) == 0:
+            return None
+        else:
+            return repeats_above_value(x, 25, True) / len(x)
 
     # Define functions to be used in aggregation.
     funs = OrderedDict([
@@ -362,19 +372,18 @@ def calc_stats_for_house(house_id, nrow=None):
         ('UnixDiff', max),
         ('EnergySumOfParts', sum),
         # ('CorrCoef', lambda x: x.max()),
-        ('PctAccountedEnergy', np.std),
-        ('Issues', [sum, np.mean])
+        # ('PctAccountedEnergy', np.std),
+        ('Issues', np.mean)
     ])
     for app_num in range(10):
         # Calculate total energy used by appliance.
-        funs['Appliance{}'.format(app_num)] = [np.mean, np.median, min, max, num_unique]
+        # funs['Appliance{}'.format(app_num)] = [np.mean, np.median, min, max, prop_unchanging_large_value]
+        funs['Appliance{}'.format(app_num)] = [min, prop_unchanging_large_value]
         funs['EnergyAppliance{}'.format(app_num)] = sum
     
     # Import timestamp data, calculate diffs (for calculating energy used by appliances), and set index (for grouping by day)
     ts_series = load_ts(house_id)
-    df = pd.DataFrame({'Unix': ts_series})  # will convert to Time later
-    if nrow is not None:
-        df = df.iloc[range(nrow)]
+    df = pd.DataFrame({'Unix': ts_series[:nrow]})  # will convert to Time later
     df['UnixDiff'] = df['Unix']  # will take diff later in grouping
     df['Time'] = pd.to_datetime(df['Unix'], unit='s', utc=True)
     del df['Unix']
@@ -382,28 +391,28 @@ def calc_stats_for_house(house_id, nrow=None):
     # df = df.tz_localize('GMT').tz_convert(tz)
     df = df.groupby(pd.TimeGrouper(freq='D')).transform(lambda x: calc_diff(x, True, 6))
     df['Time'] = df.index  # need this twice: one for grouping and one for calculating stats
-    df['Issues'] = load_issues(house_id)  # need to do this after diff so they don't get zeroed out (was a bug!)
+    df['Issues'] = load_issues(house_id)[:nrow]  # need to do this after diff so they don't get zeroed out (was a bug!)
     df['RowNum'] = range(df.shape[0])  # need to do after diff (though doesn't really matter if taking len())
     
     # Calculate energy used by appliances.
     df['EnergySumOfParts'] = np.zeros(df.shape[0], dtype=np.int)
     for app_num in range(10):
-        app_data = load_app(house_id, app_num)
-        if nrow is not None:
-            app_data = app_data[range(nrow)]
+        app_data = load_app(house_id, app_num)[:nrow]
         df['Appliance{}'.format(app_num)] = app_data
         df['EnergyAppliance{}'.format(app_num)] = df['Appliance{}'.format(app_num)] * df['UnixDiff'] * WATTSEC_2_KWH
         if app_num > 0:
             df['EnergySumOfParts'] += df['EnergyAppliance{}'.format(app_num)]
-    df['PctAccountedEnergy'] = df['EnergySumOfParts'] / df['EnergyAppliance0']
+    # df['PctAccountedEnergy'] = df['EnergySumOfParts'] / df['EnergyAppliance0']
     
     # Calculation correlation between sum of appliances and main.
     corr = df[['EnergySumOfParts', 'EnergyAppliance0']].groupby(pd.TimeGrouper(freq='D')).corr().ix[0::2,'EnergyAppliance0']
     corr = corr.reset_index().drop('level_1', axis=1)
     corr.set_index('Time', inplace=True)
     
-    # Aggregate by day and apply functions.
+    # Aggregate by day and apply functions. THIS TAKES THE MOST COMPUTE TIME.
     dstats = df.groupby(pd.TimeGrouper(freq='D')).aggregate(funs)
+    
+    # Add correlation stats.
     assert corr.shape[0] == dstats.shape[0]
     dstats['SumToMainCorr'] = corr['EnergyAppliance0']
     
@@ -510,23 +519,28 @@ def clean_daily_stats(dstats):
         (('RowNum', 'len'), dstats[('RowNum', 'len')] < 500),
         (('UnixDiff', 'max'), dstats[('UnixDiff', 'max')] > 0.25),  # 15 min
         ('HourRange', dstats['HourRange'] < 23.5),
-        (('Issues', 'mean'), dstats[('Issues', 'mean')] > 0.05),
+        (('Issues', 'mean'), dstats[('Issues', 'mean')] > 0.1),
         ('HoursInDay', dstats['HoursInDay'] != 24)
         # ('House', dstats['House'].isin([3,11,21]))  # solar panels
     ])
     for app_num in range(10):
-        # Calculate total energy used by appliance.
-        col = ('Appliance{}'.format(app_num), 'mean')
-        conds[col] = dstats[col] < 0
+        # # Calculate total energy used by appliance.
+        # col = ('Appliance{}'.format(app_num), 'mean')
+        # conds[col] = dstats[col] < 0
 
-        col = ('Appliance{}'.format(app_num), 'median')
-        conds[col] = dstats[col] < 0
+        # col = ('Appliance{}'.format(app_num), 'median')
+        # conds[col] = dstats[col] < 0
 
         col = ('Appliance{}'.format(app_num), 'min')
         conds[col] = dstats[col] < 0
+        
+        if app_num > 0:
+            # Will handle aggreagte later. Want to keep good app signals for synthetic data.
+            col = ('Appliance{}'.format(app_num), 'prop_unchanging_large_value')
+            conds[col] = dstats[col] > 0.1
 
-        col = ('EnergyAppliance{}'.format(app_num), 'sum')
-        conds[col] = dstats[col] < 0
+        # col = ('EnergyAppliance{}'.format(app_num), 'sum')
+        # conds[col] = dstats[col] < 0
 
     total_rows = dstats.shape[0]
     delete = pd.DataFrame({'Timestamp': dstats.index,
@@ -754,7 +768,7 @@ def get_aligned_series(house_id, app_num, dt, desired_sample_rate=6):
     aligned_idx, ts_mask = get_aligned_ts_mask_for_day(ts_series, dt, desired_sample_rate)
     app_series = load_app(house_id, app_num)
     x = app_series[ts_mask][aligned_idx]
-    return x
+    return x, ts_mask, aligned_idx
 
 
 def create_synthetic_data(
@@ -775,6 +789,7 @@ def create_synthetic_data(
 
     desired_sample_rate = 6
     bank_choices = create_bank_choices(dstats, app_names, house_ids, train_dts)
+    app_params = make_app_params_dict()
     # bank_choices = bank_choices.loc[bank_choices['IsTarget']==1]  # just want target apps
 
     print 'creating synthetic data...'
@@ -825,7 +840,8 @@ def create_synthetic_data(
                     print '        app_name: {}, app_nums: {}'.format(app_name, app_nums)
 
                 if not app_nums:
-                    y.append(0.)
+                    y1.append(0.)
+                    y2.append(0.)
                     if is_debug:
                         print '        skipping (adding all zeros for x and y) since there`s no app'
                     continue
@@ -842,28 +858,49 @@ def create_synthetic_data(
                     # If the swap triggers, choose the appliance signal at random
                     # from homes that have that appliance.
                     if np.random.rand() < swap_prob:
+
                         house_id_rand, app_num_rand, d_rand = get_random_series_metadata(bank_choices, app_name)
-                        x_app += get_aligned_series(house_id_rand, app_num_rand, d_rand)
-                        y_app += get_energy(dstats, house_id_rand, d_rand, [app_num_rand])
+
+                        ts_series_rand = load_ts(house_id_rand)
+                        app_power_rand = load_app(house_id_rand, app_num_rand)
+
+                        aligned_idx_rand, ts_mask_rand = get_aligned_ts_mask_for_day(
+                            ts_series_rand,
+                            date_to_datetime(d_rand),
+                            desired_sample_rate)
+                        
+                        x_app += app_power_rand[ts_mask_rand][aligned_idx_rand]
+                        y1_app += get_energy(dstats, house_id_rand, d_rand, [app_num_rand])
+                        y2_app += get_num_activations(app_power_rand[ts_mask_rand],
+                                                      ts_series_rand[ts_mask_rand],
+                                                      app_params[app_name])
 
                         if is_debug:
                             print '        swapping! random series: house {}, app num {}, date {}'.format(house_id_rand, app_num_rand, d_rand)
                             print '        x_app: {}...'.format(x_app[:5])
-                            print '        y_app: {}'.format(y_app)
+                            print '        y1_app: {}'.format(y1_app)
+                            print '        y2_app: {}'.format(y2_app)
 
                     # Otherwise, use actual data from home.
                     else:
-                        x_app += load_app(house_id, app_num)[ts_mask][aligned_idx]
-                        y_app += get_energy(dstats, house_id, dt_start.date(), [app_num])
+                        app_power = load_app(house_id, app_num)
+
+                        x_app += app_power[ts_mask][aligned_idx]
+                        y1_app += get_energy(dstats, house_id, dt_start.date(), [app_num])
+                        y2_app += get_num_activations(app_power[ts_mask],
+                                                      ts_series[ts_mask],
+                                                      app_params[app_name])
 
                         if is_debug:
                             print '        not swapping'
                             print '        x_app: {}...'.format(x_app[:5])
-                            print '        y_app: {}'.format(y_app)
+                            print '        y1_app: {}'.format(y1_app)
+                            print '        y2_app: {}'.format(y2_app)
 
                 # Add target appliance signal to synthetic aggregate.
                 x += x_app
-                y.append(y_app)
+                y1.append(y1_app)
+                y2.append(y2_app)
 
             # Add distractor appliances by iterating through appliances in home.
             if is_debug:
@@ -891,23 +928,26 @@ def create_synthetic_data(
 
             if is_debug:
                 print '        agggregated x: {}...'.format(x[:5])
-                print '        y`s: {}'.format(y)
+                print '        y1`s: {}'.format(y1)
+                print '        y2`s: {}'.format(y2)
 
             X.append(x)
             x_house.append(house_id)
             x_date.append(dt_start.date())
-            Y.append(y)
+            Y1.append(y1)
+            Y2.append(y2)
 
         # Save data after every home, just in case something crashes.
         # Later, when code is good, it'd be best to do this just once
         # so you don't overwrite the prior files.
         if save_dir is not None:
             np.save(os.path.join(save_dir, 'X.npy'), X)
-            np.save(os.path.join(save_dir, 'Y.npy'), Y)
+            np.save(os.path.join(save_dir, 'Y1.npy'), Y1)
+            np.save(os.path.join(save_dir, 'Y2.npy'), Y2)
             np.save(os.path.join(save_dir, 'x_house.npy'), x_house)
             np.save(os.path.join(save_dir, 'x_date.npy'), x_date)
 
-    return X, Y, x_house, x_date
+    return X, Y1, Y2, x_house, x_date
 
 
 def get_num_runs(dir_for_model_synth):
@@ -1054,6 +1094,8 @@ def get_num_activations(app_power, ts_series, app_params):
     return len(activations)
 
 
+
+
 if __name__ == '__main__':
 
     desired_sample_rate = 6  # series created will have timestamps that are this many seconds apart
@@ -1094,29 +1136,30 @@ if __name__ == '__main__':
 
     # create_daily_plots(HOUSE_IDS, dir_run)
 
-    dstats = create_daily_stats(HOUSE_IDS, pkl_path=path_daily_stats, nrow=None)
-    # dstats = pd.read_pickle(path_daily_stats)
-    # dstats = clean_daily_stats(dstats)
-    # train_dts = get_train_dts(dstats, prop_train, save_dir=dir_run_synthetic)
+    # dstats = create_daily_stats(HOUSE_IDS, pkl_path=path_daily_stats, nrow=None)
+    dstats = pd.read_pickle(path_daily_stats)
+    dstats = clean_daily_stats(dstats)
+    train_dts = get_train_dts(dstats, prop_train, save_dir=dir_run_synthetic)
+    # train_dts = get_train_dts(dstats, prop_train, save_dir=None)
     # train_dts = np.load(os.path.join(dir_run, 'train_dts.npy'))
 
     # X, Y1, Y2, x_house, x_date = create_real_data(HOUSE_IDS, APP_NAMES, dstats, desired_sample_rate, dir_run_real)  # can remove solar later
 
-    # # Create synthetic data.
-    # for run_num in range(1,synthetic_data_runs+1):
-    #     print '=============== RUN NUM {} ==============='.format(run_num)
-    #     X, Y, x_house, x_date = create_synthetic_data(
-    #         dstats,
-    #         HOUSE_IDS_TRAIN_VAL,
-    #         train_dts,
-    #         APP_NAMES,
-    #         swap_prob,
-    #         include_distractor_prob,
-    #         save_dir=os.path.join(dir_run_synthetic, str(run_num)),
-    #         is_debug=False
-    #         )
+    # Create synthetic data.
+    for run_num in range(1,synthetic_data_runs+1):
+        print '=============== RUN NUM {} ==============='.format(run_num)
+        X, Y1, Y2, x_house, x_date = create_synthetic_data(
+            dstats,
+            HOUSE_IDS_TRAIN_VAL,
+            train_dts,
+            APP_NAMES,
+            swap_prob,
+            include_distractor_prob,
+            save_dir=os.path.join(dir_run_synthetic, str(run_num)),
+            is_debug=False
+            )
 
-    # X, Y, x_house, x_date = create_synthetic_data(
+    # X, Y1, Y2, x_house, x_date = create_synthetic_data(
     #     dstats,
     #     HOUSE_IDS_TRAIN_VAL,
     #     train_dts[-5:],
