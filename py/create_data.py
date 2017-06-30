@@ -508,12 +508,12 @@ def get_energy(dstats, house_id, d, app_nums):
     return sum(energy.values)
 
 
-def clean_daily_stats(dstats):
+def clean_daily_stats(dstats, is_debug=True):
     '''
     Add column to indicate whether data should be used.
     '''
-
-    print 'cleaning daily stats...'
+    if is_debug:
+        print 'cleaning daily stats...'
 
     conds = OrderedDict([
         (('RowNum', 'len'), dstats[('RowNum', 'len')] < 500),
@@ -551,16 +551,18 @@ def clean_daily_stats(dstats):
         rows_affected = sum(array)
         new_rows_deleted = sum([i == 0 and j == 1 for i, j in zip(delete['Delete'].values, array)])
         delete.loc[array] = 1
-        print '{} ({:0.2g}%) rows affected in total, {} ({:0.2g}%) new | Condition {} ({})'.format(
-            rows_affected,
-            rows_affected / total_rows * 100,
-            new_rows_deleted,
-            new_rows_deleted / total_rows * 100,
-            cond_num+1,
-            str(col)
+        if is_debug:
+            print '{} ({:0.2g}%) rows affected in total, {} ({:0.2g}%) new | Condition {} ({})'.format(
+                rows_affected,
+                rows_affected / total_rows * 100,
+                new_rows_deleted,
+                new_rows_deleted / total_rows * 100,
+                cond_num+1,
+                str(col)
         )
     rows_deleted = sum(delete['Delete'].values)
-    print 'Total rows marked for deletion: {} ({:0.2g}%)'.format(rows_deleted, rows_deleted / total_rows * 100)
+    if is_debug:
+        print 'Total rows marked for deletion: {} ({:0.2g}%)'.format(rows_deleted, rows_deleted / total_rows * 100)
     
     dstats['Delete'] = delete['Delete']
     

@@ -2,10 +2,21 @@
 from __future__ import division
 
 import os
+import sys
 import numpy as np
 from datetime import datetime, timedelta
 import pandas as pd
 import matplotlib.pyplot as plt
+
+
+def blockPrint():
+    # https://stackoverflow.com/a/8391735/4794432
+    sys.stdout = open(os.devnull, 'w')
+
+
+def enablePrint():
+    # https://stackoverflow.com/a/8391735/4794432
+    sys.stdout = sys.__stdout__
 
 
 def makedirs2(path):

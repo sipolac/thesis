@@ -36,11 +36,12 @@ def load_real_data(dir_for_model_real):
     '''
 
     X = np.load(os.path.join(dir_for_model_real, 'X.npy'))
-    Y = np.load(os.path.join(dir_for_model_real, 'Y.npy'))
+    Y1 = np.load(os.path.join(dir_for_model_real, 'Y1.npy'))
+    Y2 = np.load(os.path.join(dir_for_model_real, 'Y2.npy'))
     x_house = np.load(os.path.join(dir_for_model_real, 'x_house.npy'))
     x_date = np.load(os.path.join(dir_for_model_real, 'x_date.npy'))
 
-    return X, Y, x_house, x_date
+    return X, Y1, Y2, x_house, x_date
 
 
 def load_synth_data(dir_for_model_synth, save=False):
@@ -51,7 +52,8 @@ def load_synth_data(dir_for_model_synth, save=False):
     num_runs = get_num_runs(dir_for_model_synth)
 
     X = []
-    Y = []
+    Y1 = []
+    Y2 = []
     x_house = []
     x_date = []
     for run_num in range(1,num_runs+1):
@@ -59,27 +61,76 @@ def load_synth_data(dir_for_model_synth, save=False):
         dir_run_num = os.path.join(dir_for_model_synth, '{}'.format(run_num))
 
         X_run = np.load(os.path.join(dir_run_num, 'X.npy'))
-        Y_run = np.load(os.path.join(dir_run_num, 'Y.npy'))
+        Y1_run = np.load(os.path.join(dir_run_num, 'Y1.npy'))
+        Y2_run = np.load(os.path.join(dir_run_num, 'Y2.npy'))
         x_house_run = np.load(os.path.join(dir_run_num, 'x_house.npy'))
         x_date_run = np.load(os.path.join(dir_run_num, 'x_date.npy'))
 
         X.append(X_run)
-        Y.append(Y_run)
+        Y1.append(Y1_run)
+        Y2.append(Y2_run)
         x_house.append(x_house_run)
         x_date.append(x_date_run)
 
     X = np.concatenate(X)  # cuts down to correct number of obsw
-    Y = np.concatenate(Y)
+    Y1 = np.concatenate(Y1)
+    Y2 = np.concatenate(Y2)
     x_house = np.concatenate(x_house)
     x_date = np.concatenate(x_date)
 
     if save:
         np.save(os.path.join(dir_for_model_synth, 'X.npy'), X)
-        np.save(os.path.join(dir_for_model_synth, 'Y.npy'), Y)
+        np.save(os.path.join(dir_for_model_synth, 'Y1.npy'), Y1)
+        np.save(os.path.join(dir_for_model_synth, 'Y2.npy'), Y2)
         np.save(os.path.join(dir_for_model_synth, 'x_house.npy'), x_house)
         np.save(os.path.join(dir_for_model_synth, 'x_date.npy'), x_date)
     
-    return X, Y, x_house, x_date
+    return X, Y1, Y2, x_house, x_date
+
+
+def get_bad_data_tups(dstats, dstats_cond):
+    
+    dstats['Delete_BadAgg'] = 0
+    dstats.loc[dstats_cond, 'Delete_BadAgg'] = 1
+    bad_obs_df = dstats.loc[dstats['Delete_BadAgg'] == 1, ['House']]
+    bad_obs_df.reset_index(inplace=True)
+
+    dts = bad_obs_df['Time']
+    house_ids = bad_obs_df['House']
+
+    tups = []
+    for house_id, dt in zip(house_ids, dts):
+        tups.append((house_id, dt.date()))
+
+    return tups
+
+
+def remove_tups(data_set, tups, x_house_idx, x_date_idx, is_debug=True):
+    '''
+    data_set is a list of arrays X, Y1, etc. and tupes is a list of 
+    tuples with elements (house_id, datetime). Removes observations
+    from arrays where house_id and date(time)s are in the tuple.
+    '''
+    
+    # Find indices 
+    bad_idx = []
+    for house_id, dt in tups:
+        bad_idx.append(np.where(((data_set[x_house_idx] == house_id) & (data_set[x_date_idx] == dt)))[0])
+    bad_idx = np.concatenate(bad_idx)
+    good_idx = [x for x in range(data_set[0].shape[0]) if x not in bad_idx]
+
+    # Subset each part of data set in list and return new list.
+    dat_new = []
+    for dat in data_set:
+        dat_new.append(dat[good_idx])
+    
+    if is_debug:
+        obs_before = data_set[0].shape[0]
+        obs_after = dat_new[0].shape[0]
+        obs_prop_diff = (obs_before - obs_after) / dat_new[0].shape[0]
+        print 'removed {0} obs ({1:0.2g}% of total)'.format(obs_before - obs_after, obs_prop_diff*100)
+
+    return dat_new
 
 
 def show_data_dims(all_data):
@@ -106,9 +157,6 @@ def remove_solar_from_real(all_data, house_ids_solar, x_house_idx):
 def split_real_into_train_and_valtest(all_data, house_ids_train_val, train_dates, x_house_idx, x_date_idx):
     '''
     Split real data into training and val/test. Deletes the "real" dataset afterward.
-    
-    Note that the "_idx" values must be defined either at time of function creation
-    or in the global environment.
     '''
     assert 'real' in all_data.keys()
     
@@ -168,7 +216,7 @@ def create_scalers_for_real_synth_both(all_data, X_idx):
 
 def take_diff_df(X):
     '''
-    Diff each row of X.
+    Diff each row of X and pad with zeros.
     '''
     X = np.diff(X)
     zs = np.zeros((X.shape[0], 1), dtype=int)
@@ -219,7 +267,7 @@ def reshape_as_tensor(X):
 
 
 def generate_data(
-    real_tup=None, synth_tup=None,
+    real_tup, synth_tup,
     scaler_real=None, scaler_synth=None, scaler_both=None,
     do_shuffle=True, random_state=None,  # can turn off shuffling for debugging
     batch_size=32,
