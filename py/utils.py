@@ -246,3 +246,27 @@ def repeats_above_value(x, val, get_longest_only=False):
 
         return len(idx)  # faster than summing over masks
 
+
+# class StandardScalerColumns:
+
+#     def __init__(self):
+#         self.mean = None
+#         self.std = None
+        
+#     def fit(self, Y):
+#         self.mean = np.mean(Y, axis=0)
+#         self.std = np.std(Y, axis=0)
+#         return self
+        
+#     def transform(self, Y):
+#         self.check_if_fitted()
+#         return (Y - self.mean) / self.std
+    
+#     def transform_back(self, Y_scaled):
+#         self.check_if_fitted()
+#         return Y_scaled * self.std + self.mean
+    
+#     def check_if_fitted(self):
+#         if self.mean is None or self.std is None:
+#             raise ValueError('Need to fit scaler first')
+

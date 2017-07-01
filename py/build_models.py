@@ -18,6 +18,7 @@ import matplotlib
 
 import keras
 from keras import backend as K
+from keras import regularizers
 from keras.models import Sequential
 from keras.layers import Dense, Activation, Conv1D, MaxPooling1D, Flatten, Dropout, BatchNormalization
 from keras.callbacks import EarlyStopping, ModelCheckpoint
@@ -163,8 +164,8 @@ def split_real_into_train_and_valtest(all_data, house_ids_train_val, train_dates
     # Split real data into train and val/test (same dataset for now).
     train_mask_real = (np.in1d(all_data['real'][x_date_idx], train_dates)) & \
                       (np.in1d(all_data['real'][x_house_idx], house_ids_train_val))
-    n_train_real = all_data['real'][0][train_mask_real].shape[0]  # can choose any data set in "real"
-    print 'obs for train/val: {} ({:0.2g}% of total)'.format(
+    n_train_real = sum(train_mask_real)
+    print 'real obs for training: {} ({:0.2g}% of total)'.format(
         n_train_real,
         n_train_real / all_data['real'][0].shape[0] * 100
     )
@@ -191,6 +192,66 @@ def split_valtest_into_val_and_test(all_data, x_house_idx, val_test_size=0.5):
     del all_data['val_test']
     return all_data
 
+def prepare_real_data(dir_for_model_real,
+                      dstats,
+                      extreme_percentile_cutoff,
+                      house_ids_solar,
+                      house_ids_train_val,
+                      train_dates,
+                      X_idx, Y1_idx, Y2_idx, x_house_idx, x_date_idx,
+                      all_data = OrderedDict()):
+
+    '''
+    Process real data for model.
+    '''
+
+    print 'processing real data...'
+    all_data['real'] = list(load_real_data(dir_for_model_real))  # as list so can alter elements
+
+    print 'removing extreme values...'
+    for idx in [Y1_idx, Y2_idx]:
+        all_data['real'] = remove_extremes(all_data['real'], extreme_percentile_cutoff, idx)
+
+    print 'removing homes with solar panels...'
+    all_data = remove_solar_from_real(all_data, house_ids_solar, x_house_idx)
+
+    # Do this after solar to see if it really makes a difference since corr is low w/ solar houses.
+    print 'remove obs where correlation between main and sum of apps is low'
+    corr_tups = get_bad_data_tups(dstats, dstats['SumToMainCorr'] < 0.1)
+    all_data['real'] = remove_tups(all_data['real'], corr_tups, x_house_idx, x_date_idx)
+
+    print 'remove obs where agg value is repeated'
+    repeat_cond = dstats[('Appliance0', 'prop_unchanging_large_value')] > 0.1
+    corr_tups = get_bad_data_tups(dstats, repeat_cond)
+    all_data['real'] = remove_tups(all_data['real'], corr_tups, x_house_idx, x_date_idx)
+
+    print 'splitting into training, validation and test data...'
+    all_data = split_real_into_train_and_valtest(all_data, house_ids_train_val, train_dates,
+                                                 x_house_idx, x_date_idx)
+    all_data = split_valtest_into_val_and_test(all_data, x_house_idx)
+    
+    print 'datasets: {}'.format(all_data.keys())
+    
+    return all_data
+
+
+def prepare_synth_data(dir_for_model_synth,
+                       extreme_percentile_cutoff,
+                       X_idx, Y1_idx, Y2_idx, x_house_idx, x_date_idx,
+                       all_data = OrderedDict()):
+
+    print 'loading synthetic data...'
+    all_data['synth_train_all'] = list(load_synth_data(dir_for_model_synth))
+
+    print 'removing extreme values...'
+    for idx in [Y1_idx, Y2_idx]:
+        all_data['synth_train_all'] = remove_extremes(all_data['synth_train_all'], extreme_percentile_cutoff, idx)
+
+    print 'datasets: {}'.format(all_data.keys())
+        
+    return all_data
+
+
 def create_scalers_for_real_synth_both(all_data, X_idx):
     '''
     Create scaler/standardizer for real data and synthetic data, and then
@@ -206,15 +267,15 @@ def create_scalers_for_real_synth_both(all_data, X_idx):
     # so that there are the same number of obs for real and synthetic.
     n_train_real = all_data['real_train'][0].shape[0] 
     sample_idx = np.random.choice(all_data['synth_train_all'][0].shape[0], n_train_real, replace=False)
-    train_dat = np.concatenate((all_data['synth_train_all'][X_idx][sample_idx],
-                                all_data['real_train'][X_idx]))
-    scaler_both = StandardScaler(with_mean=False).fit(train_dat.reshape(-1,1))
-    del train_dat
+    X_train = np.concatenate((all_data['synth_train_all'][X_idx][sample_idx],
+                             all_data['real_train'][X_idx]))
+    scaler_both = StandardScaler(with_mean=False).fit(X_train.reshape(-1,1))
+    del X_train
     
     return scaler_real, scaler_synth, scaler_both
 
 
-def take_diff_df(X):
+def take_row_diffs(X):
     '''
     Diff each row of X and pad with zeros.
     '''
@@ -222,6 +283,113 @@ def take_diff_df(X):
     zs = np.zeros((X.shape[0], 1), dtype=int)
     X = np.concatenate((zs, X), axis=1)
     return X
+
+
+# model_name = 'pilot_model_tmp'
+
+def create_model(
+    num_outputs,
+    output_layer_activation,
+    n_per_day,
+    num_conv_layers,
+    num_dense_layers,
+    start_filters,
+    deepen_filters,
+    kernel_size,
+    strides,
+    dilation_rate,
+    do_pool,
+    pool_size,
+    last_dense_layer_size,
+    dropout_rate_after_conv,
+    dropout_rate_after_dense,
+    use_batch_norm,
+    optimizer,
+    learning_rate,
+    l2_penalty
+):
+    
+    if dilation_rate > 1:
+        # Make dilation rate override stride length.
+        strides = 1
+    
+    if strides > kernel_size:
+        strides = kernel_size
+    
+    if not do_pool:
+        pool_size = None
+        
+    if num_dense_layers == 0:
+        last_dense_layer_size == None
+        
+    assert not (dilation_rate != 1 and strides != 1)
+
+    kernel_regularizer = regularizers.l2(l2_penalty)
+    input_shape = (N_PER_DAY, 1) if K.image_data_format() == 'channels_last' else (1, N_PER_DAY)
+
+    model = Sequential()
+    
+    # Add convolutional layers.
+    for layer_num in range(num_conv_layers):
+        
+        filter_multiplier = 2**layer_num if deepen_filters else 1
+        filters = start_filters * filter_multiplier
+        
+        conv_args = {'filters': filters,
+                     'kernel_size': kernel_size,
+                     'strides': strides,
+                     'padding': 'same',
+                     'dilation_rate': dilation_rate,
+                     'activation': 'relu',
+                     'name': 'conv_{}'.format(layer_num),
+                     'kernel_regularizer': kernel_regularizer}
+        if layer_num == 0:
+            # Need input shape if first layer.
+            conv_args['input_shape'] = input_shape
+        
+        model.add(Conv1D(**conv_args))
+        
+        if do_pool:
+            model.add(MaxPooling1D(pool_size, padding='same', name='pool_{}'.format(layer_num)))
+    
+    model.add(Dropout(dropout_rate_after_conv, name='dropout_after_conv'))
+    model.add(Flatten(name='flatten'))
+    
+    # Add dense layers.
+    for layer_num in range(num_dense_layers):
+        layer_size = last_dense_layer_size * 2**(num_dense_layers - layer_num - 1)
+        model.add(Dense(layer_size, activation='relu',
+                        kernel_regularizer=kernel_regularizer, name='dense_{}'.format(layer_num)))
+        model.add(Dropout(dropout_rate_after_dense, name='dropout_dense_{}'.format(layer_num)))
+        if use_batch_norm:
+            model.add(BatchNormalization(name='batch_norm_{}'.format(layer_num)))
+    
+    model.add(Dense(num_outputs, activation=output_layer_activation, name='dense_output',
+                    kernel_regularizer=kernel_regularizer))
+    
+    model.compile(loss='mean_squared_error',
+                  # optimizer='adam',
+                  optimizer = optimizer(lr=learning_rate),
+                  metrics=None)
+    
+    return model
+
+
+def get_scale_vars_Y(Y):
+    Y_mean = np.mean(Y, axis=0)
+    Y_std = np.std(Y, axis=0)
+    return Y_mean, Y_std
+
+
+def scale_Y(Y, Y_mean=None, Y_std=None):
+    if Y_mean is None or Y_std is None:
+        Y_mean, Y_std = get_scale_vars_Y(Y)
+    Y_scaled = (Y - Y_mean) / Y_std
+    return Y_scaled
+
+
+def unscale_Y(Y_scaled, Y_mean, Y_std):
+    return Y_scaled * Y_std + Y_mean
 
 
 def get_extreme_mask(X, q):
@@ -268,7 +436,7 @@ def reshape_as_tensor(X):
 
 def generate_data(
     real_tup, synth_tup,
-    scaler_real=None, scaler_synth=None, scaler_both=None,
+    scaler_real=None, scaler_synth=None, scaler_both=None, target_scaler=None,
     do_shuffle=True, random_state=None,  # can turn off shuffling for debugging
     batch_size=32,
     real_to_synth_ratio=0.5,
@@ -306,6 +474,11 @@ def generate_data(
         print 'scaling real and synthetic data jointly...'
         real_tup = (scaler_both.transform(real_tup[0]), real_tup[1])
         synth_tup = (scaler_both.transform(synth_tup[0]), synth_tup[1])
+
+    if target_scaler is not None:
+        print 'scaling targets for both real and synth...'
+        real_tup = (real_tup[0], target_scaler.transform(real_tup[1]))
+        synth_tup = (synth_tup[0], target_scaler.transform(synth_tup[1]))
 
         # print 'saving for easy load later...'
         # pickle.dump(real_tup, open(real_path, 'wb'))
@@ -347,6 +520,9 @@ def generate_data(
 
 
 class RuntimeHistory(keras.callbacks.Callback):
+    '''
+    Keras callback to record runtime (wall time) by epoch.
+    '''
 
     def on_train_begin(self, logs={}):
         self.t0 = time.time()
@@ -356,6 +532,31 @@ class RuntimeHistory(keras.callbacks.Callback):
         t1 = time.time()
         self.runtime.append(t1 - self.t0)
         self.t0 = t1
+
+
+def get_max_model_num(continue_from_last_run,
+                      dir_models_set):
+    '''
+    If there was a previous run of this models set, then get the max model
+    number. Otherwise just start counting the model at zero ("model_0").
+    '''
+    if continue_from_last_run:
+        # Get max model number.
+        try:
+            model_files = os.listdir(dir_models_set)
+            max_model_num = -1
+            for model_file in model_files:
+                try:
+                    max_model_num = max(int(re.sub('model_', '', model_file)), max_model_num)
+                except ValueError:
+                    pass
+            max_model_num += 1
+        except OSError:
+            max_model_num = 0
+    else:
+        max_model_num = 0
+        
+    return max_model_num        
 
 
 def app_names_to_filename(app_names):
