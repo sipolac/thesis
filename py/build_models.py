@@ -9,23 +9,27 @@ import pandas as pd
 import numpy as np
 import re
 
+import time
 from datetime import datetime, date, timedelta
 
 import cPickle as pickle
 
-import matplotlib.pyplot as plt
-import matplotlib
-
 import keras
 from keras import backend as K
-from keras import regularizers
-from keras.models import Sequential
+from keras.models import Sequential, load_model
 from keras.layers import Dense, Activation, Conv1D, MaxPooling1D, Flatten, Dropout, BatchNormalization
-from keras.callbacks import EarlyStopping, ModelCheckpoint
+from keras.callbacks import EarlyStopping, CSVLogger, ModelCheckpoint
+from keras.utils import plot_model
+from keras import regularizers
 
 from sklearn.utils import shuffle
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix
+
+import matplotlib.pyplot as plt
+import matplotlib
+import seaborn as sns
 
 matplotlib.style.use('ggplot')
 
@@ -224,7 +228,6 @@ def split_valtest_into_val_and_test(all_data, val_test_size=0.5):
 
 def prepare_real_data(dir_for_model_real,
                       dstats,
-                      extreme_percentile_cutoff,
                       house_ids_solar,
                       house_ids_train_val,
                       train_dates,
@@ -241,11 +244,11 @@ def prepare_real_data(dir_for_model_real,
     all_data = remove_solar_from_real(all_data, house_ids_solar)
 
     # Do this after solar to see if it really makes a difference since corr is low w/ solar houses.
-    print 'remove obs where correlation between main and sum of apps is low'
+    print 'removing obs where correlation between main and sum of apps is low...'
     corr_tups = get_bad_data_tups(dstats, dstats['SumToMainCorr'] < 0.1)
     all_data['real'] = remove_tups(all_data['real'], corr_tups)
 
-    print 'remove obs where agg value is repeated'
+    print 'removing obs where agg value is repeated...'
     repeat_cond = dstats[('Appliance0', 'prop_unchanging_large_value')] > 0.1
     corr_tups = get_bad_data_tups(dstats, repeat_cond)
     all_data['real'] = remove_tups(all_data['real'], corr_tups)
@@ -254,19 +257,18 @@ def prepare_real_data(dir_for_model_real,
     all_data = split_real_into_train_and_valtest(all_data, house_ids_train_val, train_dates)
     all_data = split_valtest_into_val_and_test(all_data)
     
-    print 'datasets: {}'.format(all_data.keys())
+    # print 'datasets: {}'.format(all_data.keys())
     
     return all_data
 
 
 def prepare_synth_data(dir_for_model_synth,
-                       extreme_percentile_cutoff,
                        all_data = {}):
 
     print 'loading synthetic data...'
     all_data['synth_train_all'] = load_synth_data(dir_for_model_synth)
 
-    print 'datasets: {}'.format(all_data.keys())
+    # print 'datasets: {}'.format(all_data.keys())
         
     return all_data
 
@@ -304,7 +306,53 @@ def take_row_diffs(X):
     return X
 
 
-# model_name = 'pilot_model_tmp'
+# def random_params():
+#     return {
+#         'num_conv_layers': np.random.randint(1, 6),
+#         'num_dense_layers': np.random.randint(0, 5),
+#         'start_filters': np.random.choice([2, 4, 8, 16, 32]),
+#         'deepen_filters': np.random.random() < 0.5,
+#         'kernel_size': weighted_choice([(3, 1), (6, 1), (12, 1), (24, 1)]),
+#         'strides': weighted_choice([(1, 1), (2, 1), (3, 1)]),
+#         'dilation_rate': weighted_choice([(1, 1), (2, 0.13), (3, 0.13)]),
+#         'do_pool': np.random.random() < 0.5,
+#         'pool_size': weighted_choice([(2, 1), (4, 1), (8, 1)]),
+#         'last_dense_layer_size': np.random.choice([8, 16, 32]),
+#         'dropout_rate_after_conv': np.random.choice([0, 0.1, 0.25, 0.5]),
+#         'dropout_rate_after_dense': np.random.choice([0, 0.1, 0.25, 0.5]),
+#         'use_batch_norm': np.random.random() < 0.25,
+#         'optimizer': np.random.choice([keras.optimizers.Adam,
+#                                        keras.optimizers.Adagrad,
+#                                        keras.optimizers.RMSprop]),
+#         'learning_rate': weighted_choice([(0.01, 0.13),
+#                                           (0.003, 0.25),
+#                                           (0.001, 1),
+#                                           (0.0003, 0.25),
+#                                           (0.0001, 0.13)]),
+#         'l2_penalty': weighted_choice([(0, 1), (0.001, 0.25), (0.01, 0.13)])
+#     }
+
+
+def random_params():
+    return {
+        'num_conv_layers': np.random.randint(2, 5),
+        'num_dense_layers': np.random.randint(1, 3),
+        'start_filters': np.random.choice([4, 8, 16]),
+        'deepen_filters': True,
+        'kernel_size': np.random.choice([3, 6, 12]),
+        'strides': np.random.choice([1, 2]),
+        'dilation_rate': 1,
+        'do_pool': True,
+        'pool_size': np.random.choice([2, 4]),
+        'last_dense_layer_size': np.random.choice([8, 16, 32]),
+        'dropout_rate_after_conv': np.random.choice([0.25, 0.5]),
+        'dropout_rate_after_dense': np.random.choice([0.1, 0.25, 0.5]),
+        'use_batch_norm': False,
+        'optimizer': keras.optimizers.Adam,
+        'learning_rate': np.random.choice([0.0003, 0.001, 0.003]),
+        'l2_penalty': 0
+    }
+
 
 def create_model(
     num_outputs,
@@ -344,7 +392,7 @@ def create_model(
     assert not (dilation_rate != 1 and strides != 1)
 
     kernel_regularizer = regularizers.l2(l2_penalty)
-    input_shape = (N_PER_DAY, 1) if K.image_data_format() == 'channels_last' else (1, n_per_day)
+    input_shape = (n_per_day, 1) if K.image_data_format() == 'channels_last' else (1, n_per_day)
 
     model = Sequential()
     
@@ -394,21 +442,115 @@ def create_model(
     return model
 
 
-def get_scale_vars_Y(Y):
-    Y_mean = np.mean(Y, axis=0)
-    Y_std = np.std(Y, axis=0)
-    return Y_mean, Y_std
+def run_models(
+    target_type,  # 'energy' or 'activations'
+    app_names,
+    APP_NAMES,
+    dir_models,
+    params_function = random_params,
+    modeling_group_name = str(date.today()),
+    models_to_run = 10,
+    epochs = 100,
+    batch_size = 32,
+    continue_from_last_run = True,
+    total_obs_per_epoch = 8192,
+    real_to_synth_ratio = 0.5,
+    patience = 6,
+    checkpointer_verbose = 0,
+    fit_verbose = 1,
+    show_plot = False
+):
+    
+    assert target_type in ['energy', 'activations']
+    
+    if isinstance(app_names, basestring):
+        app_names = [app_names]
 
+    steps_per_epoch = total_obs_per_epoch // batch_size
+    dir_models_set = os.path.join(dir_models, modeling_group_name, target_type, app_names_to_filename(app_names))
+    Y_key = 'Y1' if target_type=='energy' else 'Y2'  # choose which targets to use
 
-def scale_Y(Y, Y_mean=None, Y_std=None):
-    if Y_mean is None or Y_std is None:
-        Y_mean, Y_std = get_scale_vars_Y(Y)
-    Y_scaled = (Y - Y_mean) / Y_std
-    return Y_scaled
+    # Get the index in the Y array of the target appliance(s).
+    app_idx = []
+    for app_name in app_names:
+        app_idx.append(APP_NAMES.index(app_name))
+    
+    # print 'removing extreme values...'
+    # for Y_key in ['Y1', 'Y2']:
+    #     all_data['synth_train_all'] = remove_extremes(all_data['synth_train_all'], extreme_percentile_cutoff, Y_key
 
+    # Create scaler for the Y variable.
+    target_scaler = StandardScaler().fit(
+        np.concatenate((all_data['synth_train_all'][Y_key][:,app_idx],
+                        all_data['real_train'][Y_key][:,app_idx])))
 
-def unscale_Y(Y_scaled, Y_mean, Y_std):
-    return Y_scaled * Y_std + Y_mean
+    real_tup = (all_data['real_train']['X'], all_data['real_train'][Y_key][:,app_idx])
+    synth_tup = (all_data['synth_train_all']['X'], all_data['synth_train_all'][Y_key][:,app_idx])
+    generator = generate_data(real_tup,
+                              synth_tup,
+                              scaler_real, scaler_synth, scaler_both, target_scaler,
+                              batch_size = batch_size,
+                              real_to_synth_ratio = real_to_synth_ratio)
+
+    # "Append" results to last runs of models, if they exist?
+    max_model_num = get_max_model_num(continue_from_last_run, dir_models_set)
+
+    for model_num in np.arange(models_to_run) + max_model_num:
+
+        model_name = 'model_{}'.format(model_num)
+        # model_name = 'simple_small'
+        
+        params = params_function()
+        
+        print '='*25 + '\n{}\n'.format(model_name) + '='*25
+        print pd.DataFrame.from_dict(params, orient='index')
+        print '\n' + '='*25 + '\n'
+
+        output_layer_activation = 'relu' if target_type=='energy' else 'relu'  #########################
+        model = create_model(len(app_names), output_layer_activation, N_PER_DAY, **params)
+
+        dir_this_model = os.path.join(dir_models_set, model_name)
+        model_filename = os.path.join(dir_this_model, 'weights.hdf5')
+        history_filename = os.path.join(dir_this_model, 'history.csv')
+        params_filename = os.path.join(dir_this_model, 'params.csv')
+        makedirs2(dir_this_model)
+        
+        # Save target scaler to recover targets later. Save for every model just in case
+        # data changes or something (even though if it doesn't change you can use the same
+        # target scaler for all models for this target type / app names / modeling group
+        # combination)
+        pickle.dump(target_scaler, open(os.path.join(dir_this_model, 'target_scaler.pkl'), 'wb'))
+
+        pd.DataFrame.from_dict(params, orient='index').to_csv(params_filename, header=False)
+
+        # Define callbacks
+        # https://keras.io/callbacks
+        early_stopping = EarlyStopping(monitor='val_loss', patience=patience)
+        csvlogger = CSVLogger(history_filename, separator=',', append=False)
+        checkpointer = ModelCheckpoint(filepath=model_filename, verbose=checkpointer_verbose, save_best_only=True)
+        runtime_history = RuntimeHistory()
+
+        X_val_fit = reshape_as_tensor(all_data['val']['X'])
+        Y_val_fit = target_scaler.transform(all_data['val'][Y_key][:,app_idx])
+        history = model.fit_generator(generator,
+                                      steps_per_epoch = steps_per_epoch,
+                                      epochs = epochs,
+                                      validation_data=(X_val_fit, Y_val_fit),
+                                      callbacks = [early_stopping, csvlogger, checkpointer, runtime_history],
+                                      verbose = fit_verbose)
+
+        # Add runtimes to CSV.
+        history_df = pd.read_csv(history_filename)
+        history_df['runtime'] = runtime_history.runtime
+        history_df.to_csv(history_filename, index=False)
+
+        # Load best model.
+        model_filename = os.path.join(dir_this_model, 'weights.hdf5')
+        model = load_model(model_filename)
+        
+        if show_plot:
+            plot_errors(history_df)
+            plt.show()
 
 
 def get_extreme_mask(X, q):
@@ -584,43 +726,10 @@ def app_names_to_filename(app_names):
     return '_'.join([re.sub(' ', '', s) for s in app_names])
 
 
-def plot_empir_cum(x):
-    '''Plot empirical cumulative distribution'''
-    # https://stackoverflow.com/questions/15408371/cumulative-distribution-plots-python
-    return plt.step(sorted(x), np.arange(len(x))/len(x), color='black')
-
-
 def get_model_files(path):
     model_files = os.listdir(path)
     model_files = [f for f in model_files if f != '.DS_Store' and os.path.isdir(os.path.join(path, f))]
     return model_files
-
-
-def random_params():
-    return {
-        'num_conv_layers': np.random.randint(1, 6),
-        'num_dense_layers': np.random.randint(0, 5),
-        'start_filters': np.random.choice([2, 4, 8, 16, 32]),
-        'deepen_filters': np.random.random() < 0.5,
-        'kernel_size': weighted_choice([(3, 1), (6, 1), (12, 1), (24, 1)]),
-        'strides': weighted_choice([(1, 1), (2, 1), (3, 1)]),
-        'dilation_rate': weighted_choice([(1, 1), (2, 0.13), (3, 0.13)]),
-        'do_pool': np.random.random() < 0.5,
-        'pool_size': weighted_choice([(2, 1), (4, 1), (8, 1)]),
-        'last_dense_layer_size': np.random.choice([8, 16, 32]),
-        'dropout_rate_after_conv': np.random.choice([0, 0.1, 0.25, 0.5]),
-        'dropout_rate_after_dense': np.random.choice([0, 0.1, 0.25, 0.5]),
-        'use_batch_norm': np.random.random() < 0.25,
-        'optimizer': np.random.choice([keras.optimizers.Adam,
-                                       keras.optimizers.Adagrad,
-                                       keras.optimizers.RMSprop]),
-        'learning_rate': weighted_choice([(0.01, 0.13),
-                                          (0.003, 0.25),
-                                          (0.001, 1),
-                                          (0.0003, 0.25),
-                                          (0.0001, 0.13)]),
-        'l2_penalty': weighted_choice([(0, 1), (0.001, 0.25), (0.01, 0.13)])
-    }
 
 
 def plot_errors(history_df, figsize=(11,5), title='Training and validation loss (MSE)'):
@@ -637,20 +746,29 @@ def plot_errors(history_df, figsize=(11,5), title='Training and validation loss 
     return ax
 
 
-def extract_targets(all_data, split_type, app_name, app_names, Y_idx):
-    '''
-    Simply pick the right column of targets.
-    '''
-    assert split_type in ['train', 'val']
-    app_idx = app_names.index(app_name)
-    Y = all_data[split_type][Y_idx]
-    y = [Y_row[app_idx] for Y_row in Y]
-    y = np.array(y)
-    y = y.reshape(y.shape[0], 1)
-    return y
+# def extract_targets(all_data, split_type, app_name, app_names, Y_idx):
+#     '''
+#     Simply pick the right column of targets.
+#     '''
+#     assert split_type in ['train', 'val']
+#     app_idx = app_names.index(app_name)
+#     Y = all_data[split_type][Y_idx]
+#     y = [Y_row[app_idx] for Y_row in Y]
+#     y = np.array(y)
+#     y = y.reshape(y.shape[0], 1)
+#     return y
 
 
 if __name__ == '__main__':
+
+    dir_proj = '/Users/sipola/Google Drive/education/coursework/graduate/edinburgh/dissertation/thesis'
+    dir_data = os.path.join(dir_proj, 'data')
+    dir_for_model = os.path.join(dir_data, 'for_model')
+    dir_for_model_real = os.path.join(dir_for_model, 'real')
+    dir_for_model_synth = os.path.join(dir_for_model, 'synthetic')
+    dir_models = os.path.join(dir_data, 'models')
+    dir_run = os.path.join(dir_proj, 'run', str(date.today()))
+    path_daily_stats = os.path.join(dir_data, 'stats_by_day.pkl')
 
     N_PER_DAY = 14400  # 24 * 60 * 60 / 6
     HOUSE_IDS = range(1, 22); HOUSE_IDS.remove(14)  # no house 14
@@ -661,5 +779,89 @@ if __name__ == '__main__':
     HOUSE_IDS_NOT_SOLAR = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_SOLAR]
     # TRAIN_VAL_DATE_MAX = date(2015,2,28)
     APP_NAMES = ['fridge', 'kettle', 'washing machine', 'dishwasher', 'microwave']
-    TRAIN_DTS = np.load(os.path.join(dir_for_model, 'train_dts.npy'))
+    TRAIN_DTS = np.load(os.path.join(dir_for_model_synth, 'train_dts.npy'))
 
+    take_diff = False
+    # val_prop = 0.2
+    train_dates = [dt.date() for dt in TRAIN_DTS]
+    extreme_percentile_cutoff = 100
+
+
+
+    np.random.seed(20170627)
+
+    dstats = pd.read_pickle(path_daily_stats)
+    dstats = clean_daily_stats(dstats, is_debug=False)
+
+    all_data = prepare_real_data(dir_for_model_real,
+                                 dstats,
+                                 HOUSE_IDS_SOLAR,
+                                 HOUSE_IDS_TRAIN_VAL,
+                                 train_dates)
+
+    all_data = prepare_synth_data(dir_for_model_synth,
+                                  all_data = all_data)
+
+    # Want to take diffs before making scalers.
+    if take_diff:
+        print 'taking diffs...'
+        for key, dat in all_data.iteritems():
+            all_data[key]['X'] = take_diff_df(dat['X'])
+
+    print 'creating scalers...'
+    scaler_real, scaler_synth, scaler_both = create_scalers(all_data)
+
+    print 'scaling validation and test data...'
+    for split_type in ['val', 'test']:
+        all_data[split_type]['X'] = scaler_real.transform(all_data[split_type]['X'])
+        all_data[split_type]['X'] = scaler_both.transform(all_data[split_type]['X'])
+
+
+    # def static_params():
+    #     return {
+    #     'num_conv_layers': 3,
+    #     'num_dense_layers': 2,
+    #     'start_filters': 8,
+    #     'deepen_filters': True,
+    #     'kernel_size': 6,
+    #     'strides': 2,
+    #     'dilation_rate': 1,
+    #     'do_pool': True,
+    #     'pool_size': 2,
+    #     'last_dense_layer_size': 32,
+    #     'dropout_rate_after_conv': 0.25,
+    #     'dropout_rate_after_dense': 0.5,
+    #     'use_batch_norm': False,
+    #     'optimizer': keras.optimizers.Adam,
+    #     'learning_rate': 0.0001,
+    #     'l2_penalty': 0
+    #     }
+
+    print 'starting modeling loops...'
+    today = str(date.today())
+
+    while True:
+
+        for target_type in shuffle(['energy', 'activations']):
+            for app_names in shuffle(['washing machine', 'kettle']):
+
+                print 'target variable: {}'.format(target_type)
+                print 'target appliance(s): {}'.format(app_names)
+
+                run_models(
+                    target_type,  # 'energy' or 'activations'
+                    app_names,
+                    APP_NAMES,
+                    dir_models,
+                    params_function = random_params,
+                    modeling_group_name = today,
+                    models_to_run = 3,
+                    epochs = 100,
+                    batch_size = 32,
+                    continue_from_last_run = True,
+                    total_obs_per_epoch = 8192,
+                    real_to_synth_ratio = 0.5,
+                    patience = 5,
+                    checkpointer_verbose = 0,
+                    fit_verbose = 1,
+                    show_plot = False)

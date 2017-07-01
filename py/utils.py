@@ -145,6 +145,8 @@ def plot_series(x, figsize=(11,2)):
 
 
 def plot_empir_cum(x):
+    '''Plot empirical cumulative distribution'''
+    # https://stackoverflow.com/questions/15408371/cumulative-distribution-plots-python
     return plt.step(sorted(x), np.arange(len(x))/len(x), color='black')
 
 
