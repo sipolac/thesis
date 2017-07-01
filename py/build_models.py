@@ -42,7 +42,13 @@ def load_real_data(dir_for_model_real):
     x_house = np.load(os.path.join(dir_for_model_real, 'x_house.npy'))
     x_date = np.load(os.path.join(dir_for_model_real, 'x_date.npy'))
 
-    return X, Y1, Y2, x_house, x_date
+    return {
+        'X': X,
+        'Y1': Y1,
+        'Y2': Y2,
+        'x_house': x_house,
+        'x_date': x_date
+    }
 
 
 def load_synth_data(dir_for_model_synth, save=False):
@@ -86,7 +92,13 @@ def load_synth_data(dir_for_model_synth, save=False):
         np.save(os.path.join(dir_for_model_synth, 'x_house.npy'), x_house)
         np.save(os.path.join(dir_for_model_synth, 'x_date.npy'), x_date)
     
-    return X, Y1, Y2, x_house, x_date
+    return {
+        'X': X,
+        'Y1': Y1,
+        'Y2': Y2,
+        'x_house': x_house,
+        'x_date': x_date
+    }
 
 
 def get_bad_data_tups(dstats, dstats_cond):
@@ -106,7 +118,7 @@ def get_bad_data_tups(dstats, dstats_cond):
     return tups
 
 
-def remove_tups(data_set, tups, x_house_idx, x_date_idx, is_debug=True):
+def remove_tups(data_set, tups, is_debug=True):
     '''
     data_set is a list of arrays X, Y1, etc. and tupes is a list of 
     tuples with elements (house_id, datetime). Removes observations
@@ -116,19 +128,19 @@ def remove_tups(data_set, tups, x_house_idx, x_date_idx, is_debug=True):
     # Find indices 
     bad_idx = []
     for house_id, dt in tups:
-        bad_idx.append(np.where(((data_set[x_house_idx] == house_id) & (data_set[x_date_idx] == dt)))[0])
+        bad_idx.append(np.where(((data_set['x_house'] == house_id) & (data_set['x_date'] == dt)))[0])
     bad_idx = np.concatenate(bad_idx)
-    good_idx = [x for x in range(data_set[0].shape[0]) if x not in bad_idx]
+    good_idx = [x for x in range(data_set['X'].shape[0]) if x not in bad_idx]
 
     # Subset each part of data set in list and return new list.
-    dat_new = []
-    for dat in data_set:
-        dat_new.append(dat[good_idx])
+    dat_new = {}
+    for key, dat in data_set.iteritems():
+        dat_new[key] = dat[good_idx]
     
     if is_debug:
-        obs_before = data_set[0].shape[0]
-        obs_after = dat_new[0].shape[0]
-        obs_prop_diff = (obs_before - obs_after) / dat_new[0].shape[0]
+        obs_before = data_set['X'].shape[0]
+        obs_after = dat_new['X'].shape[0]
+        obs_prop_diff = (obs_before - obs_after) / dat_new['X'].shape[0]
         print 'removed {0} obs ({1:0.2g}% of total)'.format(obs_before - obs_after, obs_prop_diff*100)
 
     return dat_new
@@ -136,61 +148,79 @@ def remove_tups(data_set, tups, x_house_idx, x_date_idx, is_debug=True):
 
 def show_data_dims(all_data):
     '''
-    Debug function for printing out dimensions of 
+    Debug function for printing out dimensions of all data packet.
     '''
     for key in all_data.keys():
         print key, type(all_data[key])
-        for dat in all_data[key]:
-            print dat.shape
+        for key, dat in all_data[key].iteritems():
+            print '    {}: {}'.format(key, dat.shape)
+        print ''
 
 
-def remove_solar_from_real(all_data, house_ids_solar, x_house_idx):
+def remove_solar_from_real(all_data, house_ids_solar):
     '''
     Remove data where house has solar panels.
     '''
     assert 'real' in all_data.keys()
-    solar_mask = np.in1d(all_data['real'][x_house_idx], house_ids_solar)
-    for i in range(len(all_data['real'])):
-        all_data['real'][i] = all_data['real'][i][~solar_mask]
+    solar_mask = np.in1d(all_data['real']['x_house'], house_ids_solar)
+    for key, dat in all_data['real'].iteritems():
+        all_data['real'][key] = all_data['real'][key][~solar_mask]
     return all_data
 
 
-def split_real_into_train_and_valtest(all_data, house_ids_train_val, train_dates, x_house_idx, x_date_idx):
+def split_real_into_train_and_valtest(all_data, house_ids_train_val, train_dates):
     '''
     Split real data into training and val/test. Deletes the "real" dataset afterward.
     '''
     assert 'real' in all_data.keys()
     
     # Split real data into train and val/test (same dataset for now).
-    train_mask_real = (np.in1d(all_data['real'][x_date_idx], train_dates)) & \
-                      (np.in1d(all_data['real'][x_house_idx], house_ids_train_val))
+    train_mask_real = (np.in1d(all_data['real']['x_date'], train_dates)) & \
+                      (np.in1d(all_data['real']['x_house'], house_ids_train_val))
     n_train_real = sum(train_mask_real)
     print 'real obs for training: {} ({:0.2g}% of total)'.format(
         n_train_real,
-        n_train_real / all_data['real'][0].shape[0] * 100
+        n_train_real / all_data['real']['X'].shape[0] * 100
     )
-    all_data['real_train'] = []
-    all_data['val_test'] = []  # test doesn't take synthetic data, so don't need "real_" suffix
-    for dat in all_data['real']:
-        all_data['real_train'].append(dat[train_mask_real])
-        all_data['val_test'].append(dat[~train_mask_real])
+    all_data['real_train'] = {}
+    all_data['val_test'] = {}  # test doesn't take synthetic data, so don't need "real_" suffix
+    for key, dat in all_data['real'].iteritems():
+        all_data['real_train'][key] = dat[train_mask_real]
+        all_data['val_test'][key] = dat[~train_mask_real]
     del all_data['real']
     
     return all_data
 
 
-def split_valtest_into_val_and_test(all_data, x_house_idx, val_test_size=0.5):
+def split_valtest_into_val_and_test(all_data, val_test_size=0.5):
     '''
     Split val/test data into validation and test data. This is all real (non-synthetic).
     '''
     assert 'val_test' in all_data.keys()
-    val_test_split = train_test_split(*all_data['val_test'],
-                                       train_size=val_test_size,
-                                       stratify=all_data['val_test'][x_house_idx])
-    all_data['val'] = val_test_split[::2]
-    all_data['test'] = val_test_split[1::2]
+
+    # Be absolutely sure about order of keys and data.
+    keys = []
+    dats = []
+    for key, dat in all_data['val_test'].iteritems():
+        keys.append(key)
+        dats.append(dat)
+
+    val_test_split_dats = train_test_split(*dats,
+                                           train_size=val_test_size,  # validation set proportion from combined val-test data set
+                                           stratify=all_data['val_test']['x_house'])
+    val_dat = val_test_split_dats[::2]
+    test_dat = val_test_split_dats[1::2]
+
+    all_data['val'] = {}
+    all_data['test'] = {}
+    for i, key in enumerate(keys):  # rely on order from before
+        all_data['val'][key] = val_dat[i]
+        all_data['test'][key] = test_dat[i]
+
     del all_data['val_test']
+
     return all_data
+
 
 def prepare_real_data(dir_for_model_real,
                       dstats,
@@ -198,37 +228,31 @@ def prepare_real_data(dir_for_model_real,
                       house_ids_solar,
                       house_ids_train_val,
                       train_dates,
-                      X_idx, Y1_idx, Y2_idx, x_house_idx, x_date_idx,
-                      all_data = OrderedDict()):
+                      all_data = {}):
 
     '''
     Process real data for model.
     '''
 
     print 'processing real data...'
-    all_data['real'] = list(load_real_data(dir_for_model_real))  # as list so can alter elements
-
-    print 'removing extreme values...'
-    for idx in [Y1_idx, Y2_idx]:
-        all_data['real'] = remove_extremes(all_data['real'], extreme_percentile_cutoff, idx)
+    all_data['real'] = load_real_data(dir_for_model_real)  # as list so can alter elements
 
     print 'removing homes with solar panels...'
-    all_data = remove_solar_from_real(all_data, house_ids_solar, x_house_idx)
+    all_data = remove_solar_from_real(all_data, house_ids_solar)
 
     # Do this after solar to see if it really makes a difference since corr is low w/ solar houses.
     print 'remove obs where correlation between main and sum of apps is low'
     corr_tups = get_bad_data_tups(dstats, dstats['SumToMainCorr'] < 0.1)
-    all_data['real'] = remove_tups(all_data['real'], corr_tups, x_house_idx, x_date_idx)
+    all_data['real'] = remove_tups(all_data['real'], corr_tups)
 
     print 'remove obs where agg value is repeated'
     repeat_cond = dstats[('Appliance0', 'prop_unchanging_large_value')] > 0.1
     corr_tups = get_bad_data_tups(dstats, repeat_cond)
-    all_data['real'] = remove_tups(all_data['real'], corr_tups, x_house_idx, x_date_idx)
+    all_data['real'] = remove_tups(all_data['real'], corr_tups)
 
     print 'splitting into training, validation and test data...'
-    all_data = split_real_into_train_and_valtest(all_data, house_ids_train_val, train_dates,
-                                                 x_house_idx, x_date_idx)
-    all_data = split_valtest_into_val_and_test(all_data, x_house_idx)
+    all_data = split_real_into_train_and_valtest(all_data, house_ids_train_val, train_dates)
+    all_data = split_valtest_into_val_and_test(all_data)
     
     print 'datasets: {}'.format(all_data.keys())
     
@@ -237,38 +261,33 @@ def prepare_real_data(dir_for_model_real,
 
 def prepare_synth_data(dir_for_model_synth,
                        extreme_percentile_cutoff,
-                       X_idx, Y1_idx, Y2_idx, x_house_idx, x_date_idx,
-                       all_data = OrderedDict()):
+                       all_data = {}):
 
     print 'loading synthetic data...'
-    all_data['synth_train_all'] = list(load_synth_data(dir_for_model_synth))
-
-    print 'removing extreme values...'
-    for idx in [Y1_idx, Y2_idx]:
-        all_data['synth_train_all'] = remove_extremes(all_data['synth_train_all'], extreme_percentile_cutoff, idx)
+    all_data['synth_train_all'] = load_synth_data(dir_for_model_synth)
 
     print 'datasets: {}'.format(all_data.keys())
         
     return all_data
 
 
-def create_scalers_for_real_synth_both(all_data, X_idx):
+def create_scalers(all_data):
     '''
     Create scaler/standardizer for real data and synthetic data, and then
     both when they're combined.
     '''
     # Create scalers for real and synthetic (mean only since want to preserve differences between
     # data points).
-    scaler_real = StandardScaler(with_std=False).fit(all_data['real_train'][X_idx].reshape(-1,1))
-    scaler_synth = StandardScaler(with_std=False).fit(all_data['synth_train_all'][X_idx].reshape(-1,1))
+    scaler_real = StandardScaler(with_std=False).fit(all_data['real_train']['X'].reshape(-1,1))
+    scaler_synth = StandardScaler(with_std=False).fit(all_data['synth_train_all']['X'].reshape(-1,1))
 
     # Create scaler for combined real and synthetic (standard dev only
     # since data was already demeaned separately). Sample synthetic
     # so that there are the same number of obs for real and synthetic.
-    n_train_real = all_data['real_train'][0].shape[0] 
-    sample_idx = np.random.choice(all_data['synth_train_all'][0].shape[0], n_train_real, replace=False)
-    X_train = np.concatenate((all_data['synth_train_all'][X_idx][sample_idx],
-                             all_data['real_train'][X_idx]))
+    n_train_real = all_data['real_train']['X'].shape[0] 
+    sample_idx = np.random.choice(all_data['synth_train_all']['X'].shape[0], n_train_real, replace=False)
+    X_train = np.concatenate((all_data['synth_train_all']['X'][sample_idx],
+                             all_data['real_train']['X']))
     scaler_both = StandardScaler(with_mean=False).fit(X_train.reshape(-1,1))
     del X_train
     
@@ -325,7 +344,7 @@ def create_model(
     assert not (dilation_rate != 1 and strides != 1)
 
     kernel_regularizer = regularizers.l2(l2_penalty)
-    input_shape = (N_PER_DAY, 1) if K.image_data_format() == 'channels_last' else (1, N_PER_DAY)
+    input_shape = (N_PER_DAY, 1) if K.image_data_format() == 'channels_last' else (1, n_per_day)
 
     model = Sequential()
     
@@ -400,15 +419,17 @@ def get_extreme_mask(X, q):
     extreme_mask = np.any(X > np.percentile(X, q=q, axis=0), axis=1)
     return extreme_mask
 
-def remove_extremes(data_set, q, Y_idx):
+
+def remove_extremes(data_set, q, Y_key):
     '''
     Takes data_set (list of arrays X, Y, x_house, ...) and removes obs where values in
-    data as identified by Y_idx are extreme (according to cutoff q).
+    data as identified by Y_day are extreme (according to cutoff q). Note that this
+    an observation is removed if *any* column for any appliance is extreme.
     '''
-    extreme_mask = get_extreme_mask(data_set[Y_idx], q=q)
-    new_data = []
-    for dat in data_set:
-        new_data.append(dat[~extreme_mask])
+    extreme_mask = get_extreme_mask(data_set[Y_key], q=q)
+    new_data = {}
+    for key, dat in data_set.iteritems():
+        new_data[key] = dat[~extreme_mask]
     return new_data
 
 
