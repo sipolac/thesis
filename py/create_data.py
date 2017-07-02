@@ -1084,7 +1084,7 @@ def get_activations(chunk, min_off_duration=0, min_on_duration=0,
 
 def get_num_activations(app_power, ts_series, app_params):
     
-    # Chunk is NILM terminology for a power series.
+    # Chunk is NILMTK terminology for a power series.
     chunk = pd.Series(
         app_power,
         index=pd.to_datetime(ts_series, unit='s', utc=True)

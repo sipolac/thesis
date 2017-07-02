@@ -303,55 +303,7 @@ def take_row_diffs(X):
     X = np.diff(X)
     zs = np.zeros((X.shape[0], 1), dtype=int)
     X = np.concatenate((zs, X), axis=1)
-    return X
-
-
-# def random_params():
-#     return {
-#         'num_conv_layers': np.random.randint(1, 6),
-#         'num_dense_layers': np.random.randint(0, 5),
-#         'start_filters': np.random.choice([2, 4, 8, 16, 32]),
-#         'deepen_filters': np.random.random() < 0.5,
-#         'kernel_size': weighted_choice([(3, 1), (6, 1), (12, 1), (24, 1)]),
-#         'strides': weighted_choice([(1, 1), (2, 1), (3, 1)]),
-#         'dilation_rate': weighted_choice([(1, 1), (2, 0.13), (3, 0.13)]),
-#         'do_pool': np.random.random() < 0.5,
-#         'pool_size': weighted_choice([(2, 1), (4, 1), (8, 1)]),
-#         'last_dense_layer_size': np.random.choice([8, 16, 32]),
-#         'dropout_rate_after_conv': np.random.choice([0, 0.1, 0.25, 0.5]),
-#         'dropout_rate_after_dense': np.random.choice([0, 0.1, 0.25, 0.5]),
-#         'use_batch_norm': np.random.random() < 0.25,
-#         'optimizer': np.random.choice([keras.optimizers.Adam,
-#                                        keras.optimizers.Adagrad,
-#                                        keras.optimizers.RMSprop]),
-#         'learning_rate': weighted_choice([(0.01, 0.13),
-#                                           (0.003, 0.25),
-#                                           (0.001, 1),
-#                                           (0.0003, 0.25),
-#                                           (0.0001, 0.13)]),
-#         'l2_penalty': weighted_choice([(0, 1), (0.001, 0.25), (0.01, 0.13)])
-#     }
-
-
-def random_params():
-    return {
-        'num_conv_layers': np.random.randint(2, 5),
-        'num_dense_layers': np.random.randint(1, 3),
-        'start_filters': np.random.choice([4, 8, 16]),
-        'deepen_filters': True,
-        'kernel_size': np.random.choice([3, 6, 12]),
-        'strides': np.random.choice([1, 2]),
-        'dilation_rate': 1,
-        'do_pool': True,
-        'pool_size': np.random.choice([2, 4]),
-        'last_dense_layer_size': np.random.choice([8, 16, 32]),
-        'dropout_rate_after_conv': np.random.choice([0.25, 0.5]),
-        'dropout_rate_after_dense': np.random.choice([0.1, 0.25, 0.5]),
-        'use_batch_norm': False,
-        'optimizer': keras.optimizers.Adam,
-        'learning_rate': np.random.choice([0.0003, 0.001, 0.003]),
-        'l2_penalty': 0
-    }
+    return X    
 
 
 def create_model(
@@ -447,7 +399,7 @@ def run_models(
     app_names,
     APP_NAMES,
     dir_models,
-    params_function = random_params,
+    params_function,
     modeling_group_name = str(date.today()),
     models_to_run = 10,
     epochs = 100,
@@ -480,7 +432,7 @@ def run_models(
     #     all_data['synth_train_all'] = remove_extremes(all_data['synth_train_all'], extreme_percentile_cutoff, Y_key
 
     # Create scaler for the Y variable.
-    target_scaler = StandardScaler().fit(
+    target_scaler = StandardScaler(with_mean=False).fit(
         np.concatenate((all_data['synth_train_all'][Y_key][:,app_idx],
                         all_data['real_train'][Y_key][:,app_idx])))
 
@@ -506,7 +458,8 @@ def run_models(
         print pd.DataFrame.from_dict(params, orient='index')
         print '\n' + '='*25 + '\n'
 
-        output_layer_activation = 'relu' if target_type=='energy' else 'relu'  #########################
+        # output_layer_activation = 'relu' if target_type=='energy' else 'relu'
+        output_layer_activation = 'softplus'
         model = create_model(len(app_names), output_layer_activation, N_PER_DAY, **params)
 
         dir_this_model = os.path.join(dir_models_set, model_name)
@@ -817,36 +770,103 @@ if __name__ == '__main__':
         all_data[split_type]['X'] = scaler_both.transform(all_data[split_type]['X'])
 
 
-    # def static_params():
+    def static_params():
+        return {
+        'num_conv_layers': 2,
+        'num_dense_layers': 2,
+        'start_filters': 16,
+        'deepen_filters': True,
+        'kernel_size': 3,
+        'strides': 2,
+        'dilation_rate': 1,
+        'do_pool': True,
+        'pool_size': 2,
+        'last_dense_layer_size': 16,
+        'dropout_rate_after_conv': 0.5,
+        'dropout_rate_after_dense': 0.25,
+        'use_batch_norm': True,
+        'optimizer': keras.optimizers.Adam,
+        'learning_rate': 0.0003,
+        'l2_penalty': 0
+        }
+
+    # def random_params():
     #     return {
-    #     'num_conv_layers': 3,
-    #     'num_dense_layers': 2,
-    #     'start_filters': 8,
-    #     'deepen_filters': True,
-    #     'kernel_size': 6,
-    #     'strides': 2,
-    #     'dilation_rate': 1,
-    #     'do_pool': True,
-    #     'pool_size': 2,
-    #     'last_dense_layer_size': 32,
-    #     'dropout_rate_after_conv': 0.25,
-    #     'dropout_rate_after_dense': 0.5,
-    #     'use_batch_norm': False,
-    #     'optimizer': keras.optimizers.Adam,
-    #     'learning_rate': 0.0001,
-    #     'l2_penalty': 0
+    #         'num_conv_layers': np.random.randint(1, 6),
+    #         'num_dense_layers': np.random.randint(0, 5),
+    #         'start_filters': np.random.choice([2, 4, 8, 16, 32]),
+    #         'deepen_filters': np.random.random() < 0.5,
+    #         'kernel_size': weighted_choice([(3, 1), (6, 1), (12, 1), (24, 1)]),
+    #         'strides': weighted_choice([(1, 1), (2, 1), (3, 1)]),
+    #         'dilation_rate': weighted_choice([(1, 1), (2, 0.13), (3, 0.13)]),
+    #         'do_pool': np.random.random() < 0.5,
+    #         'pool_size': weighted_choice([(2, 1), (4, 1), (8, 1)]),
+    #         'last_dense_layer_size': np.random.choice([8, 16, 32]),
+    #         'dropout_rate_after_conv': np.random.choice([0, 0.1, 0.25, 0.5]),
+    #         'dropout_rate_after_dense': np.random.choice([0, 0.1, 0.25, 0.5]),
+    #         'use_batch_norm': np.random.random() < 0.25,
+    #         'optimizer': np.random.choice([keras.optimizers.Adam,
+    #                                        keras.optimizers.Adagrad,
+    #                                        keras.optimizers.RMSprop]),
+    #         'learning_rate': weighted_choice([(0.01, 0.13),
+    #                                           (0.003, 0.25),
+    #                                           (0.001, 1),
+    #                                           (0.0003, 0.25),
+    #                                           (0.0001, 0.13)]),
+    #         'l2_penalty': weighted_choice([(0, 1), (0.001, 0.25), (0.01, 0.13)])
     #     }
+
+
+    def random_params():
+        return {
+            'num_conv_layers': np.random.randint(2, 5),
+            'num_dense_layers': np.random.randint(1, 3),
+            'start_filters': np.random.choice([4, 8, 16]),
+            'deepen_filters': True,
+            'kernel_size': np.random.choice([3, 6, 12]),
+            'strides': np.random.choice([1, 2]),
+            'dilation_rate': 1,
+            'do_pool': True,
+            'pool_size': np.random.choice([2, 4]),
+            'last_dense_layer_size': np.random.choice([8, 16, 32]),
+            'dropout_rate_after_conv': 0.5,
+            'dropout_rate_after_dense': 0.25,
+            'use_batch_norm': False,
+            'optimizer': keras.optimizers.Adam,
+            'learning_rate': np.random.choice([0.0003, 0.001, 0.003]),
+            'l2_penalty': 0
+        }
 
     print 'starting modeling loops...'
     today = str(date.today())
+
+    # run_models(
+    #     'energy',  # 'energy' or 'activations'
+    #     'kettle',
+    #     APP_NAMES,
+    #     dir_models,
+    #     params_function = static_params,
+    #     modeling_group_name = 'testing_batch_norm',
+    #     models_to_run = 1,
+    #     epochs = 100,
+    #     batch_size = 32,
+    #     continue_from_last_run = True,
+    #     total_obs_per_epoch = 8192,
+    #     real_to_synth_ratio = 0.5,
+    #     patience = 5,
+    #     checkpointer_verbose = 0,
+    #     fit_verbose = 1,
+    #     show_plot = False)
 
     while True:
 
         for target_type in shuffle(['energy', 'activations']):
             for app_names in shuffle(['washing machine', 'kettle']):
 
+                print '\n\n' + '*'*25
                 print 'target variable: {}'.format(target_type)
                 print 'target appliance(s): {}'.format(app_names)
+                print '*'*25 + '\n\n'
 
                 run_models(
                     target_type,  # 'energy' or 'activations'
