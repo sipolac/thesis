@@ -21,6 +21,7 @@ from keras.layers import Dense, Activation, Conv1D, MaxPooling1D, Flatten, Dropo
 from keras.callbacks import EarlyStopping, CSVLogger, ModelCheckpoint
 from keras.utils import plot_model
 from keras import regularizers
+from keras.utils.generic_utils import get_custom_objects
 
 from sklearn.utils import shuffle
 from sklearn.preprocessing import StandardScaler
@@ -306,9 +307,14 @@ def take_row_diffs(X):
     return X    
 
 
+def print_layer_shapes(model):
+    shape_pattern = 'shape=(.+?), dtype'
+    for layer in model.layers:
+        print '{}: {}'.format(layer.name, re.search(shape_pattern, str(layer.output)).group(1))
+
+
 def create_model(
     num_outputs,
-    output_layer_activation,
     n_per_day,
     num_conv_layers,
     num_dense_layers,
@@ -325,7 +331,10 @@ def create_model(
     use_batch_norm,
     optimizer,
     learning_rate,
-    l2_penalty
+    l2_penalty,
+    hidden_layer_activation,
+    output_layer_activation,
+    loss
 ):
     
     if dilation_rate > 1:
@@ -359,7 +368,7 @@ def create_model(
                      'strides': strides,
                      'padding': 'same',
                      'dilation_rate': dilation_rate,
-                     'activation': 'relu',
+                     'activation': hidden_layer_activation,
                      'name': 'conv_{}'.format(layer_num),
                      'kernel_regularizer': kernel_regularizer}
         if layer_num == 0:
@@ -377,7 +386,7 @@ def create_model(
     # Add dense layers.
     for layer_num in range(num_dense_layers):
         layer_size = last_dense_layer_size * 2**(num_dense_layers - layer_num - 1)
-        model.add(Dense(layer_size, activation='relu',
+        model.add(Dense(layer_size, activation=hidden_layer_activation,
                         kernel_regularizer=kernel_regularizer, name='dense_{}'.format(layer_num)))
         model.add(Dropout(dropout_rate_after_dense, name='dropout_dense_{}'.format(layer_num)))
         if use_batch_norm:
@@ -386,7 +395,7 @@ def create_model(
     model.add(Dense(num_outputs, activation=output_layer_activation, name='dense_output',
                     kernel_regularizer=kernel_regularizer))
     
-    model.compile(loss='mean_squared_error',
+    model.compile(loss=loss,
                   # optimizer='adam',
                   optimizer = optimizer(lr=learning_rate),
                   metrics=None)
@@ -395,6 +404,7 @@ def create_model(
 
 
 def run_models(
+    all_data,
     target_type,  # 'energy' or 'activations'
     app_names,
     APP_NAMES,
@@ -410,7 +420,8 @@ def run_models(
     patience = 6,
     checkpointer_verbose = 0,
     fit_verbose = 1,
-    show_plot = False
+    show_plot = False,
+    _print_layer_shapes=True
 ):
     
     assert target_type in ['energy', 'activations']
@@ -458,14 +469,15 @@ def run_models(
         print pd.DataFrame.from_dict(params, orient='index')
         print '\n' + '='*25 + '\n'
 
-        # output_layer_activation = 'relu' if target_type=='energy' else 'relu'
-        output_layer_activation = 'softplus'
-        model = create_model(len(app_names), output_layer_activation, N_PER_DAY, **params)
+        model = create_model(len(app_names), N_PER_DAY, **params)
+        if _print_layer_shapes:
+            print_layer_shapes(model)
 
         dir_this_model = os.path.join(dir_models_set, model_name)
         model_filename = os.path.join(dir_this_model, 'weights.hdf5')
         history_filename = os.path.join(dir_this_model, 'history.csv')
-        params_filename = os.path.join(dir_this_model, 'params.csv')
+        params_csv_filename = os.path.join(dir_this_model, 'params.csv')
+        params_pkl_filename = os.path.join(dir_this_model, 'params.pkl')
         makedirs2(dir_this_model)
         
         # Save target scaler to recover targets later. Save for every model just in case
@@ -474,7 +486,11 @@ def run_models(
         # combination)
         pickle.dump(target_scaler, open(os.path.join(dir_this_model, 'target_scaler.pkl'), 'wb'))
 
-        pd.DataFrame.from_dict(params, orient='index').to_csv(params_filename, header=False)
+        # Save params in two forms: CSV for easy opening w/ Excel, and pickled to
+        # preserve data in correct format (otherwise all param values are converted
+        # into strings).
+        pickle.dump(params, open(params_pkl_filename, 'wb'))
+        pd.DataFrame.from_dict(params, orient='index').to_csv(params_csv_filename, header=False)
 
         # Define callbacks
         # https://keras.io/callbacks
@@ -699,6 +715,122 @@ def plot_errors(history_df, figsize=(11,5), title='Training and validation loss 
     return ax
 
 
+def get_histories_df(dir_models_set):
+
+    model_files = get_model_files(dir_models_set)
+
+    history_all = []
+    params_all = []
+
+    for model_name in model_files:
+
+        history_df = pd.read_csv(os.path.join(dir_models_set, model_name, 'history.csv'))
+        param_colnames = ['param', 'value']
+        try:
+            params = pickle.load(open(os.path.join(dir_models_set, model_name, 'params.pkl'), 'rb'))
+            params_df = pd.DataFrame.from_dict(params, orient='index').reset_index()
+            params_df.columns = param_colnames
+        except IOError:
+            # In case it's before I started pickling parameters as dictionaries.
+            params_df = pd.read_csv(os.path.join(dir_models_set, model_name, 'params.csv'),
+                                    header=None,
+                                    names=param_colnames)
+
+        history_df['model'] = model_name
+        try:
+            history_df['runtime']
+        except KeyError:
+            history_df['runtime'] = float('inf')
+        params_df['model'] = model_name    
+
+        history_all.append(history_df)
+        params_all.append(params_df)
+
+        # print model_name
+        # print params_df
+
+        # plot_errors(history_df, figsize=(11,5))
+        # plt.show()
+
+    params_all = pd.concat(params_all)
+    history_all = pd.concat(history_all)
+
+    # print all_history
+    params_wide = params_all.pivot(index='model', columns='param')
+    history_best = history_all.groupby('model').agg({
+        'loss': min,
+        'val_loss': min,
+        'runtime': min,
+        'epoch': len
+    })
+
+    hist_and_params = history_best.join(params_wide)
+
+    hist_and_params.sort_values('val_loss', inplace=True)
+    # hist_and_params.to_csv('tmp.csv')
+
+    return hist_and_params
+
+
+def get_best_model_name(dir_models_set):
+    hist_and_params = get_histories_df(dir_models_set)
+    best_model_name = hist_and_params.loc[hist_and_params['loss']==hist_and_params['loss'].min()].index.values[0]
+    return best_model_name
+
+def load_best_model(dir_models_set):
+    best_model_name = get_best_model_name(dir_models_set)
+    dir_best_model = os.path.join(dir_models_set, best_model_name)
+    return load_model(os.path.join(dir_best_model, 'weights.hdf5'))
+
+
+def plot_series_activations(series,
+                            activations,
+                            x_shift=25,
+                            y_shift=1,
+                            plot_reference=False,
+                            ref_aspect=25,
+                            cm=matplotlib.cm.Purples,
+                            figsize=(9,4)):
+    '''
+    Plots series colored by activations given list "activations" where each element
+    in the list contains the filter activations of the filter of a convolutional layer.
+    The length of the series must be divisible by the length of the elements of the
+    activations list. This should occur naturally given that strides and pooling of
+    the convolutional layers, with "same" padding, result in output dimensions that are
+    divisible by the input layer.
+    '''
+
+    assert len(series) / len(activations) % 1 == 0
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(111)
+    ax.axis('off')  # removes axes and borders
+    if plot_reference:
+        ax.plot(np.arange(len(series)) - x_shift*ref_aspect,
+                series + y_shift*ref_aspect,
+                c=cm(1000),
+                alpha=0.75)
+    for i, colors in enumerate(activations):
+        scale_factor = len(series) / len(colors)
+        scale_factor = int(scale_factor)
+        colors = cm((colors-np.min(colors))/(np.max(colors)-np.min(colors)))
+        for segment, color in enumerate(colors):
+            start = segment * scale_factor
+            end = (segment + 1) * scale_factor
+            ax.plot(np.arange(start, end) + i*x_shift,
+                    series[start:end] - i*y_shift,
+                    c=color,
+                    alpha=0.5)
+    return ax
+
+
+# def exp_custom(x, alpha=1.):
+#     '''
+
+#     '''
+#     return K.exp(K.identity(x)) - alpha
+# get_custom_objects().update({'exp_custom': Activation(exp_custom)})
+
+
 # def extract_targets(all_data, split_type, app_name, app_names, Y_idx):
 #     '''
 #     Simply pick the right column of targets.
@@ -769,119 +901,175 @@ if __name__ == '__main__':
         all_data[split_type]['X'] = scaler_real.transform(all_data[split_type]['X'])
         all_data[split_type]['X'] = scaler_both.transform(all_data[split_type]['X'])
 
+    real_deal = True
+    if real_deal:
 
-    def static_params():
-        return {
-        'num_conv_layers': 2,
-        'num_dense_layers': 2,
-        'start_filters': 16,
-        'deepen_filters': True,
-        'kernel_size': 3,
-        'strides': 2,
-        'dilation_rate': 1,
-        'do_pool': True,
-        'pool_size': 2,
-        'last_dense_layer_size': 16,
-        'dropout_rate_after_conv': 0.5,
-        'dropout_rate_after_dense': 0.25,
-        'use_batch_norm': True,
-        'optimizer': keras.optimizers.Adam,
-        'learning_rate': 0.0003,
-        'l2_penalty': 0
-        }
+        today = str(date.today())
+        modeling_group_name = '2017-07-02'
+        # modeling_group_name = today
 
-    # def random_params():
-    #     return {
-    #         'num_conv_layers': np.random.randint(1, 6),
-    #         'num_dense_layers': np.random.randint(0, 5),
-    #         'start_filters': np.random.choice([2, 4, 8, 16, 32]),
-    #         'deepen_filters': np.random.random() < 0.5,
-    #         'kernel_size': weighted_choice([(3, 1), (6, 1), (12, 1), (24, 1)]),
-    #         'strides': weighted_choice([(1, 1), (2, 1), (3, 1)]),
-    #         'dilation_rate': weighted_choice([(1, 1), (2, 0.13), (3, 0.13)]),
-    #         'do_pool': np.random.random() < 0.5,
-    #         'pool_size': weighted_choice([(2, 1), (4, 1), (8, 1)]),
-    #         'last_dense_layer_size': np.random.choice([8, 16, 32]),
-    #         'dropout_rate_after_conv': np.random.choice([0, 0.1, 0.25, 0.5]),
-    #         'dropout_rate_after_dense': np.random.choice([0, 0.1, 0.25, 0.5]),
-    #         'use_batch_norm': np.random.random() < 0.25,
-    #         'optimizer': np.random.choice([keras.optimizers.Adam,
-    #                                        keras.optimizers.Adagrad,
-    #                                        keras.optimizers.RMSprop]),
-    #         'learning_rate': weighted_choice([(0.01, 0.13),
-    #                                           (0.003, 0.25),
-    #                                           (0.001, 1),
-    #                                           (0.0003, 0.25),
-    #                                           (0.0001, 0.13)]),
-    #         'l2_penalty': weighted_choice([(0, 1), (0.001, 0.25), (0.01, 0.13)])
-    #     }
+        def random_params():
+            return {
+                'num_conv_layers': np.random.randint(2, 6),
+                'num_dense_layers': np.random.randint(1, 4),
+                'start_filters': int(rand_geom(4, 32)),
+                'deepen_filters': True,
+                'kernel_size': int(rand_geom(3, 12)),
+                'strides': int(rand_geom(1, 4)),
+                'dilation_rate': 1,
+                'do_pool': True,
+                'pool_size': int(rand_geom(2, 5)),
+                'last_dense_layer_size': int(rand_geom(8, 64)),
+                'dropout_rate_after_conv': 0.5,
+                'dropout_rate_after_dense': 0.25,
+                'use_batch_norm': False,
+                'optimizer': keras.optimizers.Adam,
+                'learning_rate': rand_geom(0.0003, 0.003),
+                'l2_penalty': np.random.choice([0, rand_geom(0.0001, 0.01)]),
+                'hidden_layer_activation': 'relu',
+                'output_layer_activation': 'relu',
+                'loss': 'mse'
+            }
 
+        while True:
 
-    def random_params():
-        return {
-            'num_conv_layers': np.random.randint(2, 5),
-            'num_dense_layers': np.random.randint(1, 3),
-            'start_filters': np.random.choice([4, 8, 16]),
+            print 'starting modeling loops...'
+
+            # for target_type in shuffle(['energy', 'activations']):
+            for target_type in ['energy', 'activations']:
+                for app_names in shuffle(['washing machine', 'kettle']):
+
+                    print '\n\n' + '*'*25
+                    print 'target variable: {}'.format(target_type)
+                    print 'target appliance(s): {}'.format(app_names)
+                    print '*'*25 + '\n\n'
+
+                    run_models(
+                        all_data,
+                        target_type,  # 'energy' or 'activations'
+                        app_names,
+                        APP_NAMES,
+                        dir_models,
+                        params_function = random_params,
+                        modeling_group_name = today,
+                        models_to_run = 3,
+                        epochs = 100,
+                        batch_size = 32,
+                        continue_from_last_run = True,
+                        total_obs_per_epoch = 8192,
+                        real_to_synth_ratio = 0.5,
+                        patience = 5,
+                        checkpointer_verbose = 0,
+                        fit_verbose = 1,
+                        show_plot = False)
+
+    else:
+        def static_params1():
+            return {
+            'num_conv_layers': 2,
+            'num_dense_layers': 2,
+            'start_filters': 8,
             'deepen_filters': True,
-            'kernel_size': np.random.choice([3, 6, 12]),
-            'strides': np.random.choice([1, 2]),
+            'kernel_size': 6,
+            'strides': 2,
             'dilation_rate': 1,
             'do_pool': True,
-            'pool_size': np.random.choice([2, 4]),
-            'last_dense_layer_size': np.random.choice([8, 16, 32]),
+            'pool_size': 2,
+            'last_dense_layer_size': 16,
             'dropout_rate_after_conv': 0.5,
             'dropout_rate_after_dense': 0.25,
             'use_batch_norm': False,
             'optimizer': keras.optimizers.Adam,
-            'learning_rate': np.random.choice([0.0003, 0.001, 0.003]),
-            'l2_penalty': 0
-        }
+            'learning_rate': 0.0001,
+            'l2_penalty': 0,
+            'hidden_layer_activation': 'elu',
+            'output_layer_activation': 'relu'
+            }
 
-    print 'starting modeling loops...'
-    today = str(date.today())
+        def static_params2():
+            return {
+            'num_conv_layers': 2,
+            'num_dense_layers': 2,
+            'start_filters': 8,
+            'deepen_filters': True,
+            'kernel_size': 6,
+            'strides': 2,
+            'dilation_rate': 1,
+            'do_pool': True,
+            'pool_size': 2,
+            'last_dense_layer_size': 16,
+            'dropout_rate_after_conv': 0.5,
+            'dropout_rate_after_dense': 0.25,
+            'use_batch_norm': False,
+            'optimizer': keras.optimizers.Adam,
+            'learning_rate': 0.0001,
+            'l2_penalty': 0,
+            'hidden_layer_activation': 'relu',
+            'output_layer_activation': 'relu'
+            }
 
-    # run_models(
-    #     'energy',  # 'energy' or 'activations'
-    #     'kettle',
-    #     APP_NAMES,
-    #     dir_models,
-    #     params_function = static_params,
-    #     modeling_group_name = 'testing_batch_norm',
-    #     models_to_run = 1,
-    #     epochs = 100,
-    #     batch_size = 32,
-    #     continue_from_last_run = True,
-    #     total_obs_per_epoch = 8192,
-    #     real_to_synth_ratio = 0.5,
-    #     patience = 5,
-    #     checkpointer_verbose = 0,
-    #     fit_verbose = 1,
-    #     show_plot = False)
+        # def random_params():
+        #     return {
+        #         'num_conv_layers': np.random.randint(1, 6),
+        #         'num_dense_layers': np.random.randint(0, 5),
+        #         'start_filters': np.random.choice([2, 4, 8, 16, 32]),
+        #         'deepen_filters': np.random.random() < 0.5,
+        #         'kernel_size': weighted_choice([(3, 1), (6, 1), (12, 1), (24, 1)]),
+        #         'strides': weighted_choice([(1, 1), (2, 1), (3, 1)]),
+        #         'dilation_rate': weighted_choice([(1, 1), (2, 0.13), (3, 0.13)]),
+        #         'do_pool': np.random.random() < 0.5,
+        #         'pool_size': weighted_choice([(2, 1), (4, 1), (8, 1)]),
+        #         'last_dense_layer_size': np.random.choice([8, 16, 32]),
+        #         'dropout_rate_after_conv': np.random.choice([0, 0.1, 0.25, 0.5]),
+        #         'dropout_rate_after_dense': np.random.choice([0, 0.1, 0.25, 0.5]),
+        #         'use_batch_norm': np.random.random() < 0.25,
+        #         'optimizer': np.random.choice([keras.optimizers.Adam,
+        #                                        keras.optimizers.Adagrad,
+        #                                        keras.optimizers.RMSprop]),
+        #         'learning_rate': weighted_choice([(0.01, 0.13),
+        #                                           (0.003, 0.25),
+        #                                           (0.001, 1),
+        #                                           (0.0003, 0.25),
+        #                                           (0.0001, 0.13)]),
+        #         'l2_penalty': weighted_choice([(0, 1), (0.001, 0.25), (0.01, 0.13)])
+        #     }
 
-    while True:
+        run_models(
+            all_data,
+            'energy',  # 'energy' or 'activations'
+            'kettle',
+            APP_NAMES,
+            dir_models,
+            params_function = static_params1,
+            modeling_group_name = 'testing_batch_norm',
+            models_to_run = 1,
+            epochs = 100,
+            batch_size = 32,
+            continue_from_last_run = True,
+            total_obs_per_epoch = 8192,
+            real_to_synth_ratio = 0.5,
+            patience = 5,
+            checkpointer_verbose = 0,
+            fit_verbose = 1,
+            show_plot = False)
 
-        for target_type in shuffle(['energy', 'activations']):
-            for app_names in shuffle(['washing machine', 'kettle']):
+        run_models(
+            all_data,
+            'energy',  # 'energy' or 'activations'
+            'kettle',
+            APP_NAMES,
+            dir_models,
+            params_function = static_params2,
+            modeling_group_name = 'testing_batch_norm',
+            models_to_run = 1,
+            epochs = 100,
+            batch_size = 32,
+            continue_from_last_run = True,
+            total_obs_per_epoch = 8192,
+            real_to_synth_ratio = 0.5,
+            patience = 5,
+            checkpointer_verbose = 0,
+            fit_verbose = 1,
+            show_plot = False)
 
-                print '\n\n' + '*'*25
-                print 'target variable: {}'.format(target_type)
-                print 'target appliance(s): {}'.format(app_names)
-                print '*'*25 + '\n\n'
-
-                run_models(
-                    target_type,  # 'energy' or 'activations'
-                    app_names,
-                    APP_NAMES,
-                    dir_models,
-                    params_function = random_params,
-                    modeling_group_name = today,
-                    models_to_run = 3,
-                    epochs = 100,
-                    batch_size = 32,
-                    continue_from_last_run = True,
-                    total_obs_per_epoch = 8192,
-                    real_to_synth_ratio = 0.5,
-                    patience = 5,
-                    checkpointer_verbose = 0,
-                    fit_verbose = 1,
-                    show_plot = False)
+    

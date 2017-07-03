@@ -249,6 +249,20 @@ def repeats_above_value(x, val, get_longest_only=False):
         return len(idx)  # faster than summing over masks
 
 
+def rand_geom(start, end):
+    return np.exp(np.random.uniform(np.log(start), np.log(end)))
+
+
+def expand_array(a, desired_len):
+    scale_factor = desired_len / len(a)
+    assert scale_factor % 1 == 0, 'desired_len needs to be a multiple of the input array'
+    scale_factor = int(scale_factor)
+    expanded = np.empty(desired_len, dtype=type(a[0]))
+    for i in range(scale_factor):
+        expanded[i::scale_factor] = a
+    return expanded
+
+
 # class StandardScalerColumns:
 
 #     def __init__(self):
