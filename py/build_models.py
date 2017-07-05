@@ -765,6 +765,11 @@ def get_histories_df(dir_models_set):
     })
 
     hist_and_params = history_best.join(params_wide)
+    
+    # Remove "value" element (i.e., first level of column multiindex heirarchy)
+    # in column tuples ("value", [column]).
+    remove_first = lambda x: x[-1] if not isinstance(x, basestring) else x
+    hist_and_params.columns = [remove_first(x) for x in hist_and_params.columns]
 
     hist_and_params.sort_values('val_loss', inplace=True)
     # hist_and_params.to_csv('tmp.csv')
@@ -911,21 +916,21 @@ if __name__ == '__main__':
         def random_params():
             return {
                 'num_conv_layers': np.random.randint(2, 6),
-                'num_dense_layers': np.random.randint(1, 4),
-                'start_filters': int(rand_geom(4, 32)),
+                'num_dense_layers': np.random.randint(1, 3),
+                'start_filters': int(rand_geom(4, 17)),
                 'deepen_filters': True,
-                'kernel_size': int(rand_geom(3, 12)),
-                'strides': int(rand_geom(1, 4)),
+                'kernel_size': int(rand_geom(3, 13)),
+                'strides': int(rand_geom(1, 3)),
                 'dilation_rate': 1,
                 'do_pool': True,
                 'pool_size': int(rand_geom(2, 5)),
-                'last_dense_layer_size': int(rand_geom(8, 64)),
+                'last_dense_layer_size': int(rand_geom(8, 32)),
                 'dropout_rate_after_conv': 0.5,
                 'dropout_rate_after_dense': 0.25,
                 'use_batch_norm': False,
                 'optimizer': keras.optimizers.Adam,
                 'learning_rate': rand_geom(0.0003, 0.003),
-                'l2_penalty': np.random.choice([0, rand_geom(0.0001, 0.01)]),
+                'l2_penalty': np.random.choice([0, rand_geom(0.00001, 0.01)]),
                 'hidden_layer_activation': 'relu',
                 'output_layer_activation': 'relu',
                 'loss': 'mse'
@@ -936,8 +941,8 @@ if __name__ == '__main__':
             print 'starting modeling loops...'
 
             # for target_type in shuffle(['energy', 'activations']):
-            for target_type in ['energy', 'activations']:
-                for app_names in shuffle(['washing machine', 'kettle']):
+            for target_type in shuffle(['energy']):
+                for app_names in shuffle(['washing machine']):
 
                     print '\n\n' + '*'*25
                     print 'target variable: {}'.format(target_type)
@@ -951,7 +956,7 @@ if __name__ == '__main__':
                         APP_NAMES,
                         dir_models,
                         params_function = random_params,
-                        modeling_group_name = today,
+                        modeling_group_name = modeling_group_name,
                         models_to_run = 3,
                         epochs = 100,
                         batch_size = 32,
@@ -966,47 +971,49 @@ if __name__ == '__main__':
     else:
         def static_params1():
             return {
-            'num_conv_layers': 2,
-            'num_dense_layers': 2,
-            'start_filters': 8,
+            'num_conv_layers': 7,
+            'num_dense_layers': 3,
+            'start_filters': 2,
             'deepen_filters': True,
-            'kernel_size': 6,
+            'kernel_size': 3,
             'strides': 2,
             'dilation_rate': 1,
             'do_pool': True,
             'pool_size': 2,
-            'last_dense_layer_size': 16,
+            'last_dense_layer_size': 8,
             'dropout_rate_after_conv': 0.5,
             'dropout_rate_after_dense': 0.25,
             'use_batch_norm': False,
             'optimizer': keras.optimizers.Adam,
-            'learning_rate': 0.0001,
-            'l2_penalty': 0,
-            'hidden_layer_activation': 'elu',
-            'output_layer_activation': 'relu'
-            }
-
-        def static_params2():
-            return {
-            'num_conv_layers': 2,
-            'num_dense_layers': 2,
-            'start_filters': 8,
-            'deepen_filters': True,
-            'kernel_size': 6,
-            'strides': 2,
-            'dilation_rate': 1,
-            'do_pool': True,
-            'pool_size': 2,
-            'last_dense_layer_size': 16,
-            'dropout_rate_after_conv': 0.5,
-            'dropout_rate_after_dense': 0.25,
-            'use_batch_norm': False,
-            'optimizer': keras.optimizers.Adam,
-            'learning_rate': 0.0001,
+            'learning_rate': 0.001,
             'l2_penalty': 0,
             'hidden_layer_activation': 'relu',
-            'output_layer_activation': 'relu'
+            'output_layer_activation': 'relu',
+            'loss': 'mse'
             }
+
+        # def static_params2():
+        #     return {
+        #     'num_conv_layers': 5,
+        #     'num_dense_layers': 2,
+        #     'start_filters': 4,
+        #     'deepen_filters': True,
+        #     'kernel_size': 3,
+        #     'strides': 2,
+        #     'dilation_rate': 1,
+        #     'do_pool': True,
+        #     'pool_size': 4,
+        #     'last_dense_layer_size': 8,
+        #     'dropout_rate_after_conv': 0.5,
+        #     'dropout_rate_after_dense': 0.25,
+        #     'use_batch_norm': False,
+        #     'optimizer': keras.optimizers.Adam,
+        #     'learning_rate': 0.001,
+        #     'l2_penalty': 0,
+        #     'hidden_layer_activation': 'relu',
+        #     'output_layer_activation': 'relu',
+        #     'loss': 'mse'
+        #     }
 
         # def random_params():
         #     return {
@@ -1037,11 +1044,11 @@ if __name__ == '__main__':
         run_models(
             all_data,
             'energy',  # 'energy' or 'activations'
-            'kettle',
+            'washing machine',
             APP_NAMES,
             dir_models,
             params_function = static_params1,
-            modeling_group_name = 'testing_batch_norm',
+            modeling_group_name = '2017-07-02',
             models_to_run = 1,
             epochs = 100,
             batch_size = 32,
@@ -1053,23 +1060,23 @@ if __name__ == '__main__':
             fit_verbose = 1,
             show_plot = False)
 
-        run_models(
-            all_data,
-            'energy',  # 'energy' or 'activations'
-            'kettle',
-            APP_NAMES,
-            dir_models,
-            params_function = static_params2,
-            modeling_group_name = 'testing_batch_norm',
-            models_to_run = 1,
-            epochs = 100,
-            batch_size = 32,
-            continue_from_last_run = True,
-            total_obs_per_epoch = 8192,
-            real_to_synth_ratio = 0.5,
-            patience = 5,
-            checkpointer_verbose = 0,
-            fit_verbose = 1,
-            show_plot = False)
+        # run_models(
+        #     all_data,
+        #     'energy',  # 'energy' or 'activations'
+        #     'washing machine',
+        #     APP_NAMES,
+        #     dir_models,
+        #     params_function = static_params2,
+        #     modeling_group_name = '2017-07-02',
+        #     models_to_run = 1,
+        #     epochs = 100,
+        #     batch_size = 32,
+        #     continue_from_last_run = True,
+        #     total_obs_per_epoch = 8192,
+        #     real_to_synth_ratio = 0.5,
+        #     patience = 5,
+        #     checkpointer_verbose = 0,
+        #     fit_verbose = 1,
+        #     show_plot = False)
 
-    
+    # 
