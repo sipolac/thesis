@@ -876,8 +876,7 @@ if __name__ == '__main__':
     train_dates = [dt.date() for dt in TRAIN_DTS]
     extreme_percentile_cutoff = 100
 
-
-
+    # Set random seed so training/validation set is consistent across runs.
     np.random.seed(20170627)
 
     dstats = pd.read_pickle(path_daily_stats)
@@ -905,6 +904,10 @@ if __name__ == '__main__':
     for split_type in ['val', 'test']:
         all_data[split_type]['X'] = scaler_real.transform(all_data[split_type]['X'])
         all_data[split_type]['X'] = scaler_both.transform(all_data[split_type]['X'])
+
+    # Now set random seed to something specific to this run so that hyperparameters
+    # are different each time this is run.
+    np.random.seed(int(time.time()))
 
     real_deal = True
     if real_deal:
@@ -941,7 +944,7 @@ if __name__ == '__main__':
             print 'starting modeling loops...'
 
             # for target_type in shuffle(['energy', 'activations']):
-            for target_type in shuffle(['energy']):
+            for target_type in shuffle(['activations']):
                 for app_names in shuffle(['washing machine']):
 
                     print '\n\n' + '*'*25
