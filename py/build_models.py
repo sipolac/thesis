@@ -307,10 +307,10 @@ def take_row_diffs(X):
     return X    
 
 
-def print_layer_shapes(model):
-    shape_pattern = 'shape=(.+?), dtype'
-    for layer in model.layers:
-        print '{}: {}'.format(layer.name, re.search(shape_pattern, str(layer.output)).group(1))
+# def print_layer_shapes(model):
+#     shape_pattern = 'shape=(.+?), dtype'
+#     for layer in model.layers:
+#         print '{}: {}'.format(layer.name, re.search(shape_pattern, str(layer.output)).group(1))
 
 
 def create_model(
@@ -421,7 +421,7 @@ def run_models(
     checkpointer_verbose = 0,
     fit_verbose = 1,
     show_plot = False,
-    _print_layer_shapes=True
+    print_summary=True
 ):
     
     assert target_type in ['energy', 'activations']
@@ -470,8 +470,8 @@ def run_models(
         print '\n' + '='*25 + '\n'
 
         model = create_model(len(app_names), N_PER_DAY, **params)
-        if _print_layer_shapes:
-            print_layer_shapes(model)
+        if print_summary:
+            print model.summary()
 
         dir_this_model = os.path.join(dir_models_set, model_name)
         model_filename = os.path.join(dir_this_model, 'weights.hdf5')
@@ -692,6 +692,10 @@ def get_max_model_num(continue_from_last_run,
 
 
 def app_names_to_filename(app_names):
+    if app_names == APP_NAMES:
+        app_names = ['all_apps']
+    if isinstance(app_names, basestring):
+        app_names = [app_names]
     return '_'.join([re.sub(' ', '', s) for s in app_names])
 
 
@@ -723,8 +727,11 @@ def get_histories_df(dir_models_set):
     params_all = []
 
     for model_name in model_files:
-
-        history_df = pd.read_csv(os.path.join(dir_models_set, model_name, 'history.csv'))
+        
+        try:
+            history_df = pd.read_csv(os.path.join(dir_models_set, model_name, 'history.csv'))
+        except:
+            print '{} has no history data'.format(model_name)
         param_colnames = ['param', 'value']
         try:
             params = pickle.load(open(os.path.join(dir_models_set, model_name, 'params.pkl'), 'rb'))
@@ -735,7 +742,7 @@ def get_histories_df(dir_models_set):
             params_df = pd.read_csv(os.path.join(dir_models_set, model_name, 'params.csv'),
                                     header=None,
                                     names=param_colnames)
-
+        
         history_df['model'] = model_name
         try:
             history_df['runtime']
@@ -757,6 +764,7 @@ def get_histories_df(dir_models_set):
 
     # print all_history
     params_wide = params_all.pivot(index='model', columns='param')
+    params_wide.rename(columns={'loss': 'loss_fn'}, inplace=True)  # to make sure there aren't two loss columns
     history_best = history_all.groupby('model').agg({
         'loss': min,
         'val_loss': min,
@@ -779,7 +787,7 @@ def get_histories_df(dir_models_set):
 
 def get_best_model_name(dir_models_set):
     hist_and_params = get_histories_df(dir_models_set)
-    best_model_name = hist_and_params.loc[hist_and_params['loss']==hist_and_params['loss'].min()].index.values[0]
+    best_model_name = hist_and_params.loc[hist_and_params['val_loss']==hist_and_params['val_loss'].min()].index.values[0]
     return best_model_name
 
 def load_best_model(dir_models_set):
@@ -790,41 +798,40 @@ def load_best_model(dir_models_set):
 
 def plot_series_activations(series,
                             activations,
-                            x_shift=25,
-                            y_shift=1,
-                            plot_reference=False,
-                            ref_aspect=25,
-                            cm=matplotlib.cm.Purples,
+                            y_shift=0.02,
+                            plot_reference=True,
+                            reference_padder=0.05,
+                            cm=matplotlib.cm.plasma,
                             figsize=(9,4)):
     '''
     Plots series colored by activations given list "activations" where each element
-    in the list contains the filter activations of the filter of a convolutional layer.
+    in the list contains the activations of a filter of the convolutional layer.
     The length of the series must be divisible by the length of the elements of the
     activations list. This should occur naturally given that strides and pooling of
     the convolutional layers, with "same" padding, result in output dimensions that are
     divisible by the input layer.
     '''
 
-    assert len(series) / len(activations) % 1 == 0
+    activations_expanded = []
+    series = (series - min(series)) / (max(series) - min(series))
+    for i in range(len(activations)):
+        activations_expanded.append(change_array_size(activations[i], len(series)))
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111)
     ax.axis('off')  # removes axes and borders
     if plot_reference:
-        ax.plot(np.arange(len(series)) - x_shift*ref_aspect,
-                series + y_shift*ref_aspect,
-                c=cm(1000),
-                alpha=0.75)
+        ax.plot(np.arange(len(series)), series + reference_padder, c='gray')
     for i, colors in enumerate(activations):
-        scale_factor = len(series) / len(colors)
-        scale_factor = int(scale_factor)
+        scale_factor = len(series) // len(colors)
         colors = cm((colors-np.min(colors))/(np.max(colors)-np.min(colors)))
         for segment, color in enumerate(colors):
             start = segment * scale_factor
             end = (segment + 1) * scale_factor
-            ax.plot(np.arange(start, end) + i*x_shift,
-                    series[start:end] - i*y_shift,
+            ax.plot(np.arange(start, end),
+                    # series[start:end] - i*y_shift,
+                    np.zeros(end-start) - i*y_shift,
                     c=color,
-                    alpha=0.5)
+                    linewidth=3)
     return ax
 
 
@@ -913,16 +920,16 @@ if __name__ == '__main__':
     if real_deal:
 
         today = str(date.today())
-        modeling_group_name = '2017-07-02'
+        modeling_group_name = 'main'
         # modeling_group_name = today
 
         def random_params():
             return {
-                'num_conv_layers': np.random.randint(2, 6),
+                'num_conv_layers': np.random.randint(3, 8),
                 'num_dense_layers': np.random.randint(1, 3),
-                'start_filters': int(rand_geom(4, 17)),
+                'start_filters': int(rand_geom(4, 9)),
                 'deepen_filters': True,
-                'kernel_size': int(rand_geom(3, 13)),
+                'kernel_size': int(rand_geom(3, 7)),
                 'strides': int(rand_geom(1, 3)),
                 'dilation_rate': 1,
                 'do_pool': True,
@@ -933,7 +940,7 @@ if __name__ == '__main__':
                 'use_batch_norm': False,
                 'optimizer': keras.optimizers.Adam,
                 'learning_rate': rand_geom(0.0003, 0.003),
-                'l2_penalty': np.random.choice([0, rand_geom(0.00001, 0.01)]),
+                'l2_penalty': np.random.choice([0, rand_geom(0.000001, 0.01)]),
                 'hidden_layer_activation': 'relu',
                 'output_layer_activation': 'relu',
                 'loss': 'mse'
@@ -944,8 +951,8 @@ if __name__ == '__main__':
             print 'starting modeling loops...'
 
             # for target_type in shuffle(['energy', 'activations']):
-            for target_type in shuffle(['activations']):
-                for app_names in shuffle(['washing machine']):
+            for target_type in ['activations', 'energy']:
+                for app_names in ['dishwasher', 'fridge', 'microwave']:
 
                     print '\n\n' + '*'*25
                     print 'target variable: {}'.format(target_type)

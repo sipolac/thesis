@@ -259,7 +259,7 @@ def get_ts_mask(ts_series, dt_start, dt_end=None):
 
 def get_df(house_id, use_app_names=False, dt_start=None, dt_end=None, include_issues=False):
     '''
-    Plot time series of power data for each appliance, for specified house and date(time).
+    Get DataFrame of time series of power data for each appliance, for specified house and date(time).
     '''
     
     # Load time series for house and get timestamps for specified date.
@@ -309,8 +309,9 @@ def plot_day(house_id, dt, savefile=None, figsize=(9,5), cols=None, title=None):
     colormap = plt.cm.Set1
     ax.set_color_cycle([colormap(i) for i in np.linspace(0, 1, len(app_names))])
     # ax = df.plot(figsize=figsize)
+    color_arg = {'color': 'black'} if len(app_names)==1 else {}
     for app_name in app_names:
-        ax = df[app_name].plot(figsize=figsize)
+        ax = df[app_name].plot(figsize=figsize, **color_arg)
     if title is None:
         ax.set_title('House {}\n{}'.format(house_id, dt.date().strftime('%Y-%m-%d')))
     ax.set_xlabel('')
@@ -1094,8 +1095,6 @@ def get_num_activations(app_power, ts_series, app_params):
     activations = get_activations(chunk, border=1, **app_params)
     
     return len(activations)
-
-
 
 
 if __name__ == '__main__':
