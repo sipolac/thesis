@@ -287,7 +287,7 @@ def get_df(house_id, use_app_names=False, dt_start=None, dt_end=None, include_is
     return df
 
 
-def plot_day(house_id, dt, savefile=None, figsize=(9,5), cols=None, title=None):
+def plot_day(house_id, dt, savefile=None, figsize=(9,5), cols=None, title=None, colormap=plt.cm.tab10):
     '''
     Plot time series of power data for each appliance, for specified house and date(time).
     '''
@@ -306,7 +306,6 @@ def plot_day(house_id, dt, savefile=None, figsize=(9,5), cols=None, title=None):
     app_names = list(df)  # get columns from DataFrame
    
     # Set color map.
-    colormap = plt.cm.Set1
     ax.set_color_cycle([colormap(i) for i in np.linspace(0, 1, len(app_names))])
     # ax = df.plot(figsize=figsize)
     color_arg = {'color': 'black'} if len(app_names)==1 else {}
@@ -1120,8 +1119,8 @@ if __name__ == '__main__':
 
     HOUSE_IDS = range(1, 22); HOUSE_IDS.remove(14)  # no house 14
     APP_NAMES = ['fridge', 'kettle', 'washing machine', 'dishwasher', 'microwave']
-    HOUSE_IDS_TEST = [2,9,20]
-    HOUSE_IDS_TRAIN_VAL = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_TEST]
+    HOUSE_IDS_VAL_TEST = [2,9,20]
+    HOUSE_IDS_TRAIN = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_VAL_TEST]
     HOUSE_IDS_SOLAR = [3,11,21]
     HOUSE_IDS_NOT_SOLAR = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_SOLAR]
     # TRAIN_VAL_DATE_MAX = datetime(2015,2,28)
@@ -1151,7 +1150,7 @@ if __name__ == '__main__':
         print '=============== RUN NUM {} ==============='.format(run_num)
         X, Y1, Y2, x_house, x_date = create_synthetic_data(
             dstats,
-            HOUSE_IDS_TRAIN_VAL,
+            HOUSE_IDS_TRAIN,
             train_dts,
             APP_NAMES,
             swap_prob,
@@ -1162,7 +1161,7 @@ if __name__ == '__main__':
 
     # X, Y1, Y2, x_house, x_date = create_synthetic_data(
     #     dstats,
-    #     HOUSE_IDS_TRAIN_VAL,
+    #     HOUSE_IDS_TRAIN,
     #     train_dts[-5:],
     #     APP_NAMES,
     #     swap_prob,

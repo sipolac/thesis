@@ -173,7 +173,7 @@ def remove_solar_from_real(all_data, house_ids_solar):
     return all_data
 
 
-def split_real_into_train_and_valtest(all_data, house_ids_train_val, train_dates):
+def split_real_into_train_and_valtest(all_data, house_ids_train, train_dates):
     '''
     Split real data into training and val/test. Deletes the "real" dataset afterward.
     '''
@@ -181,7 +181,7 @@ def split_real_into_train_and_valtest(all_data, house_ids_train_val, train_dates
     
     # Split real data into train and val/test (same dataset for now).
     train_mask_real = (np.in1d(all_data['real']['x_date'], train_dates)) & \
-                      (np.in1d(all_data['real']['x_house'], house_ids_train_val))
+                      (np.in1d(all_data['real']['x_house'], house_ids_train))
     n_train_real = sum(train_mask_real)
     print 'real obs for training: {} ({:0.2g}% of total)'.format(
         n_train_real,
@@ -230,7 +230,7 @@ def split_valtest_into_val_and_test(all_data, val_test_size=0.5):
 def prepare_real_data(dir_for_model_real,
                       dstats,
                       house_ids_solar,
-                      house_ids_train_val,
+                      house_ids_train,
                       train_dates,
                       all_data = {}):
 
@@ -255,7 +255,7 @@ def prepare_real_data(dir_for_model_real,
     all_data['real'] = remove_tups(all_data['real'], corr_tups)
 
     print 'splitting into training, validation and test data...'
-    all_data = split_real_into_train_and_valtest(all_data, house_ids_train_val, train_dates)
+    all_data = split_real_into_train_and_valtest(all_data, house_ids_train, train_dates)
     all_data = split_valtest_into_val_and_test(all_data)
     
     # print 'datasets: {}'.format(all_data.keys())
@@ -869,8 +869,8 @@ if __name__ == '__main__':
 
     N_PER_DAY = 14400  # 24 * 60 * 60 / 6
     HOUSE_IDS = range(1, 22); HOUSE_IDS.remove(14)  # no house 14
-    HOUSE_IDS_TEST = [2,9,20]
-    HOUSE_IDS_TRAIN_VAL = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_TEST]
+    HOUSE_IDS_VAL_TEST = [2,9,20]
+    HOUSE_IDS_TRAIN = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_VAL_TEST]
     # HOUSE_IDS_SOLAR = [3,11,21]  # according to paper
     HOUSE_IDS_SOLAR = [1,11,21]  # according to inspection
     HOUSE_IDS_NOT_SOLAR = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_SOLAR]
@@ -892,7 +892,7 @@ if __name__ == '__main__':
     all_data = prepare_real_data(dir_for_model_real,
                                  dstats,
                                  HOUSE_IDS_SOLAR,
-                                 HOUSE_IDS_TRAIN_VAL,
+                                 HOUSE_IDS_TRAIN,
                                  train_dates)
 
     all_data = prepare_synth_data(dir_for_model_synth,
