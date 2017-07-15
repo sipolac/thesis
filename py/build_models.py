@@ -108,7 +108,8 @@ def load_synth_data(dir_for_model_synth, save=False):
 
 def get_bad_data_tups(dstats, dstats_cond):
     
-    dstats['Delete_BadAgg'] = 0
+    if 'Delete_BadAgg' not in dstats.columns:
+        dstats['Delete_BadAgg'] = 0
     dstats.loc[dstats_cond, 'Delete_BadAgg'] = 1
     bad_obs_df = dstats.loc[dstats['Delete_BadAgg'] == 1, ['House']]
     bad_obs_df.reset_index(inplace=True)
@@ -119,6 +120,9 @@ def get_bad_data_tups(dstats, dstats_cond):
     tups = []
     for house_id, dt in zip(house_ids, dts):
         tups.append((house_id, dt.date()))
+
+    # dstats.drop('Delete_BadAgg', axis=1, inplace=True)
+    # del dstats['Delete_BadAgg']
 
     return tups
 
