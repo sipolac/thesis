@@ -28,8 +28,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix
 
+import matplotlib  # need to do this: # need to do this: https://stackoverflow.com/a/21789908/4794432
+# matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-import matplotlib
 import seaborn as sns
 
 matplotlib.style.use('ggplot')
@@ -736,6 +737,7 @@ def get_histories_df(dir_models_set):
             history_df = pd.read_csv(os.path.join(dir_models_set, model_name, 'history.csv'))
         except:
             print '{} has no history data'.format(model_name)
+            print 'dir_models_set: {}'.format(dir_models_set)
         param_colnames = ['param', 'value']
         try:
             params = pickle.load(open(os.path.join(dir_models_set, model_name, 'params.pkl'), 'rb'))
@@ -955,8 +957,8 @@ if __name__ == '__main__':
             print 'starting modeling loops...'
 
             # for target_type in shuffle(['energy', 'activations']):
-            for target_type in ['activations', 'energy']:
-                for app_names in ['dishwasher', 'fridge', 'microwave']:
+            for target_type in ['energy', 'activations']:
+                for app_names in ['dishwasher', 'microwave', 'fridge']:
 
                     print '\n\n' + '*'*25
                     print 'target variable: {}'.format(target_type)

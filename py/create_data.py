@@ -20,8 +20,9 @@ from datetime import datetime
 from datetime import timedelta
 from datetime import date
 
+import matplotlib  # need to do this: # need to do this: https://stackoverflow.com/a/21789908/4794432
+# matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-import matplotlib
 
 matplotlib.style.use('ggplot')
 
