@@ -802,64 +802,138 @@ def load_best_model(dir_models_set):
     return load_model(os.path.join(dir_best_model, 'weights.hdf5'))
 
 
-def plot_series_activations(series,
-                            activations,
-                            y_shift=0.02,
-                            plot_reference=True,
-                            reference_padder=0.05,
-                            cm=matplotlib.cm.plasma,
-                            figsize=(9,4)):
-    '''
-    Plots series colored by activations given list "activations" where each element
-    in the list contains the activations of a filter of the convolutional layer.
-    The length of the series must be divisible by the length of the elements of the
-    activations list. This should occur naturally given that strides and pooling of
-    the convolutional layers, with "same" padding, result in output dimensions that are
-    divisible by the input layer.
-    '''
-
-    activations_expanded = []
-    series = (series - min(series)) / (max(series) - min(series))
-    for i in range(len(activations)):
-        activations_expanded.append(change_array_size(activations[i], len(series)))
+def plot_series_activations(
+    house_id,
+    dt,
+    activations,
+    apps_to_plot=None,
+    figsize=(8,5.5),
+    height_ratios=[5, 1],
+    cmap_series=plt.cm.tab10,
+    cmap_heatmap='Greys'
+):
+    
+    # Define axes.
     fig = plt.figure(figsize=figsize)
-    ax = fig.add_subplot(111)
-    ax.axis('off')  # removes axes and borders
-    if plot_reference:
-        ax.plot(np.arange(len(series)), series + reference_padder, c='gray')
-    for i, colors in enumerate(activations):
-        scale_factor = len(series) // len(colors)
-        colors = cm((colors-np.min(colors))/(np.max(colors)-np.min(colors)))
-        for segment, color in enumerate(colors):
-            start = segment * scale_factor
-            end = (segment + 1) * scale_factor
-            ax.plot(np.arange(start, end),
-                    # series[start:end] - i*y_shift,
-                    np.zeros(end-start) - i*y_shift,
-                    c=color,
-                    linewidth=3)
-    return ax
+    gs = matplotlib.gridspec.GridSpec(2, 1, height_ratios=height_ratios)
+    ax_series = fig.add_subplot(gs[0])
+    ax_heatmap = fig.add_subplot(gs[1])
+    
+    # Plot series.
+    plot_day(house_id, dt=dt, apps_to_plot=apps_to_plot, ax=ax_series, cmap=cmap_series)
+    ax_series.get_xaxis().set_ticks_position('top')
+
+    # Plot heatmap of activations.
+    sns.heatmap(activations, ax=ax_heatmap, cbar=False, cmap=cmap_heatmap)
+    ax_heatmap.get_xaxis().set_visible(False)
+    ax_heatmap.set_ylabel('Last conv.\nlayer\nactivations')
+    ax_heatmap.set_yticklabels([])
+
+    gs.tight_layout(fig)
+    plt.show()
+    
+    return gs
 
 
-# def exp_custom(x, alpha=1.):
-#     '''
-
-#     '''
-#     return K.exp(K.identity(x)) - alpha
-# get_custom_objects().update({'exp_custom': Activation(exp_custom)})
+def get_standardized_app_names(house_id, house_app_name):
+    return apps.loc[(apps['House']==house_id) & (apps[create_app_dict()[house_app_name]['col']]==1), 'Appliance'].values
 
 
-# def extract_targets(all_data, split_type, app_name, app_names, Y_idx):
-#     '''
-#     Simply pick the right column of targets.
-#     '''
-#     assert split_type in ['train', 'val']
-#     app_idx = app_names.index(app_name)
-#     Y = all_data[split_type][Y_idx]
-#     y = [Y_row[app_idx] for Y_row in Y]
-#     y = np.array(y)
-#     y = y.reshape(y.shape[0], 1)
-#     return y
+def plot_pred_scatter(
+    y,
+    y_hat,
+    x_house,
+    save_dir = None,
+    title = None,
+    lowess = False,
+    fit_reg = True,
+    palette = np.array(sns.color_palette('tab10', 10))[[1,0]],  # gets blue and orange from tab10 palette
+):
+
+    plt.close()
+    
+    max_val = max([max(y), max(y_hat)])
+    # xy_line = plt.plot([0,max_val], [0,max_val], ':', color='gray')
+
+    if save_dir is not None:
+        plot_dir = os.path.join(dir_run)
+        makedirs2(plot_dir)
+
+    # Create dataset for plotting.
+    plot_data = pd.DataFrame.from_dict({'Actual': y, 'Predicted': y_hat, 'House': x_house})
+    plot_data['House type'] = 'unseen'
+    plot_data.loc[plot_data['House'].isin(HOUSE_IDS_TRAIN), 'House type'] = 'seen'
+
+    plot_args = {
+        'x': 'Actual',
+        'y': 'Predicted',
+        'data': plot_data,
+        'lowess': lowess,
+        'truncate': True,
+        'fit_reg': fit_reg
+    }
+    
+    g = sns.lmplot(scatter_kws={'color': 'black', 'alpha': 0.3},
+                   line_kws={'color': 'black'},
+                   **plot_args
+    )
+    lims = [-max_val*0.05,max_val*1.1]
+    g.set(ylim=lims, xlim=lims)
+    plt.subplots_adjust(top=0.83)
+    g.fig.suptitle(title, size=14)
+    if save_dir is not None:
+        filename = '{}_{}_{}.pdf'.format(
+            'predscatter',
+            target_type,
+            app_names_to_filename(app_names)
+        )
+        plt.savefig(os.path.join(plot_dir, filename))
+    plt.show()
+
+    g = sns.lmplot(scatter_kws={'alpha': 0.3},
+                   col='House',
+                   hue='House type',
+                   col_wrap=4,
+                   size=2.3,
+                   aspect=0.85,
+                   palette=palette,
+                   **plot_args
+    )
+    # plt.ylim(max_val*1.1)
+    # plt.xlim(max_val*1.1)
+    # g = g.map(plt.plot, [0,max_val], [0,max_val], ':', color='gray')
+    g.set(ylim=lims, xlim=lims)
+    plt.subplots_adjust(top=0.88)
+    g.fig.suptitle(title, size=14)
+    if save_dir is not None:
+        filename = '{}_{}_{}.pdf'.format(
+            'predscatterbyhouse',
+            target_type,
+            app_names_to_filename(app_names))
+        plt.savefig(os.path.join(plot_dir, filename))
+    plt.show()
+        
+        
+def truncate_model(model, conv_layer_index=-1):
+    '''
+    Truncate model at certain convolutional layer. conv_layer_index is the
+    index of the convoluational layer (0 is the first, -1 is the last)
+    '''
+    layer_names = [x.name for x in model.layers]
+    conv_layer_name = [l for l in layer_names if 'conv_' in l][conv_layer_index]
+    model_truncated = Sequential()
+    for layer in model.layers:
+        model_truncated.add(layer)
+        if layer.name == conv_layer_name:
+            break
+    return model_truncated
+
+
+def get_activations(x, truncated_model):
+    '''
+    Get activations of hidden layer from truncated model.
+    '''
+    return truncated_model.predict(reshape_as_tensor([x]))[0].T
 
 
 if __name__ == '__main__':
