@@ -288,48 +288,45 @@ def get_df(house_id, use_app_names=False, dt_start=None, dt_end=None, include_is
     return df
 
 
-def plot_day(house_id, dt, savefile=None, figsize=(9,5), cols=None, title=None, colormap=plt.cm.tab10):
+def plot_day(house_id, dt, apps_to_plot=None, figsize=(8,5), ax=None, cmap=plt.cm.tab10):
     '''
     Plot time series of power data for each appliance, for specified house and date(time).
     '''
-    df = get_df(house_id, use_app_names=True, dt_start=dt)
-    if cols is not None:
-        cols += ['Unix']  # add Unix in case it wasn't included in cols
-        cols = list(set(cols))
-        df = df[cols]
+    
+    ts_series = load_ts(house_id)
+    ts_mask = get_ts_mask(ts_series, dt)
+    
+    # Create time index for data.
+    df = pd.DataFrame({'Unix': ts_series[ts_mask]}) # add first column to df (timestamp)
     df['Time'] = pd.to_datetime(df['Unix'], unit='s', utc=True)
     df.set_index('Time', inplace=True)
-    del df['Unix']
+    df.drop('Unix', axis=1, inplace=True)
     
-    # df = df.tz_localize('GMT').tz_convert('Europe/London')
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    app_names = list(df)  # get columns from DataFrame
+    # Add appliance columns.
+    for app_num in range(10):
+        app_name = get_app_name(house_id, app_num)
+        df[app_name] = load_app(house_id, app_num)[ts_mask]
+    
+    if apps_to_plot is None:
+        apps_to_plot = list(df)
+    
+    if ax is None:
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot(111)
    
-    # Set color map.
-    ax.set_color_cycle([colormap(i) for i in np.linspace(0, 1, len(app_names))])
-    # ax = df.plot(figsize=figsize)
-    color_arg = {'color': 'black'} if len(app_names)==1 else {}
-    for app_name in app_names:
-        ax = df[app_name].plot(figsize=figsize, **color_arg)
-    if title is None:
-        ax.set_title('House {}\n{}'.format(house_id, dt.date().strftime('%Y-%m-%d')))
+    # Plot appliances.
+    for i, app_name in enumerate(list(df)):  # list() gives column names of DataFrame
+        if app_name in apps_to_plot:
+            df[app_name].plot(alpha=0.7, ax=ax, color=cmap(i))
     ax.set_xlabel('')
     ax.set_ylabel('Power (Watts)')
-    # plt.xticks(np.arange(min(df.index), max(df.index)+1, 8.))
-
-    # Put legend outside of plot.
-    # https://stackoverflow.com/a/4701285/4794432
-    box = ax.get_position()
-    ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-
-    # # Decrese legend font size.
-    # fontP = FontProperties()
-    # fontP.set_size('xx-small')
-
-    if savefile is not None:
-        plt.savefig(savefile)
+    ax.text(x=min(df.index) + (max(df.index) - min(df.index)) / 2,
+            y=df[apps_to_plot].max().max(),
+            s='House {}\n{}'.format(house_id, dt.date().strftime('%Y-%m-%d')),
+            horizontalalignment='center',
+            verticalalignment='top')
+    ax.legend()
+    
     return ax
 
 
@@ -342,7 +339,7 @@ def plot_date_range(house_id, dt_base, day_range=range(-7, 5), app_names=None, f
     for day_delta in day_range:
         dt = dt_base + timedelta(days=day_delta)
         try:
-            plot_day(house_id, dt, figsize=figsize, cols=app_names)
+            plot_day(house_id, dt, figsize=figsize, apps_to_plot=app_names)
         except TypeError:
             print 'no data for {}'.format(str(dt.date()))
 
@@ -481,6 +478,7 @@ def create_daily_plots(house_ids, dir_run, figsize=(9,5)):
             savefile = os.path.join(house_dir, '{}.pdf'.format(str(dt.date())))
             try:
                 plot_day(house_id, dt, savefile, figsize=figsize)
+                raise NotImplementedError  # need to update saving functionality of this; savefile is no longer an arg
             except TypeError:
                 # DataFrame has no columns b/c there's no data for that day.
                 pass
