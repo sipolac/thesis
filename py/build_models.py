@@ -16,7 +16,7 @@ import cPickle as pickle
 
 import keras
 from keras import backend as K
-from keras.models import Sequential, load_model
+from keras.models import Sequential, load_model, model_from_json
 from keras.layers import Dense, Activation, Conv1D, MaxPooling1D, Flatten, Dropout, BatchNormalization
 from keras.callbacks import EarlyStopping, CSVLogger, ModelCheckpoint
 from keras.utils import plot_model
@@ -358,7 +358,10 @@ def create_model(
     assert not (dilation_rate != 1 and strides != 1)
 
     kernel_regularizer = regularizers.l2(l2_penalty)
-    input_shape = (n_per_day, 1) if K.image_data_format() == 'channels_last' else (1, n_per_day)
+    if K.image_data_format() == 'channels_last':
+        input_shape = (n_per_day, 1)
+    else:
+        input_shape = (1, n_per_day)
 
     model = Sequential()
     
@@ -368,14 +371,15 @@ def create_model(
         filter_multiplier = 2**layer_num if deepen_filters else 1
         filters = start_filters * filter_multiplier
         
-        conv_args = {'filters': filters,
-                     'kernel_size': kernel_size,
-                     'strides': strides,
-                     'padding': 'same',
-                     'dilation_rate': dilation_rate,
-                     'activation': hidden_layer_activation,
-                     'name': 'conv_{}'.format(layer_num),
-                     'kernel_regularizer': kernel_regularizer}
+        conv_args = {
+            'filters': filters,
+            'kernel_size': kernel_size,
+            'strides': strides,
+            'padding': 'same',
+            'dilation_rate': dilation_rate,
+            'activation': hidden_layer_activation,
+            'name': 'conv_{}'.format(layer_num),
+            'kernel_regularizer': kernel_regularizer}
         if layer_num == 0:
             # Need input shape if first layer.
             conv_args['input_shape'] = input_shape
@@ -383,7 +387,10 @@ def create_model(
         model.add(Conv1D(**conv_args))
         
         if do_pool:
-            model.add(MaxPooling1D(pool_size, padding='same', name='pool_{}'.format(layer_num)))
+            model.add(MaxPooling1D(
+                pool_size,
+                padding='same',
+                name='pool_{}'.format(layer_num)))
     
     model.add(Dropout(dropout_rate_after_conv, name='dropout_after_conv'))
     model.add(Flatten(name='flatten'))
@@ -391,21 +398,33 @@ def create_model(
     # Add dense layers.
     for layer_num in range(num_dense_layers):
         layer_size = last_dense_layer_size * 2**(num_dense_layers - layer_num - 1)
-        model.add(Dense(layer_size, activation=hidden_layer_activation,
-                        kernel_regularizer=kernel_regularizer, name='dense_{}'.format(layer_num)))
-        model.add(Dropout(dropout_rate_after_dense, name='dropout_dense_{}'.format(layer_num)))
+        model.add(Dense(
+            layer_size,
+            activation=hidden_layer_activation,
+            kernel_regularizer=kernel_regularizer,
+            name='dense_{}'.format(layer_num)))
+        model.add(Dropout(
+            dropout_rate_after_dense,
+            name='dropout_dense_{}'.format(layer_num)))
         if use_batch_norm:
             model.add(BatchNormalization(name='batch_norm_{}'.format(layer_num)))
     
-    model.add(Dense(num_outputs, activation=output_layer_activation, name='dense_output',
-                    kernel_regularizer=kernel_regularizer))
+    model.add(Dense(
+        num_outputs,
+        activation=output_layer_activation,
+        name='dense_output',
+        kernel_regularizer=kernel_regularizer))
     
-    model.compile(loss=loss,
-                  # optimizer='adam',
-                  optimizer = optimizer(lr=learning_rate),
-                  metrics=None)
+    model.compile(loss=loss, optimizer=optimizer(lr=learning_rate))
     
     return model
+
+
+def create_target_scaler(all_data, Y_key, app_idx):
+    target_scaler = StandardScaler(with_mean=False).fit(
+        np.concatenate((all_data['synth_train_all'][Y_key][:,app_idx],
+                        all_data['real_train'][Y_key][:,app_idx])))
+    return target_scaler
 
 
 def run_models(
@@ -426,7 +445,8 @@ def run_models(
     checkpointer_verbose = 0,
     fit_verbose = 1,
     show_plot = False,
-    print_summary=True
+    print_summary = True,
+    model_init_dir = None  # not really initialization; just taking params
 ):
     
     assert target_type in ['energy', 'activations']
@@ -448,9 +468,7 @@ def run_models(
     #     all_data['synth_train_all'] = remove_extremes(all_data['synth_train_all'], extreme_percentile_cutoff, Y_key
 
     # Create scaler for the Y variable.
-    target_scaler = StandardScaler(with_mean=False).fit(
-        np.concatenate((all_data['synth_train_all'][Y_key][:,app_idx],
-                        all_data['real_train'][Y_key][:,app_idx])))
+    target_scaler = create_target_scaler(all_data, Y_key, app_idx)
 
     real_tup = (all_data['real_train']['X'], all_data['real_train'][Y_key][:,app_idx])
     synth_tup = (all_data['synth_train_all']['X'], all_data['synth_train_all'][Y_key][:,app_idx])
@@ -468,7 +486,10 @@ def run_models(
         model_name = 'model_{}'.format(model_num)
         # model_name = 'simple_small'
         
-        params = params_function()
+        if model_init_dir is None:
+            params = params_function()
+        else:
+            params = pickle.load(open(os.path.join(model_init_dir, 'params.pkl'), 'rb'))
         
         print '='*25 + '\n{}\n'.format(model_name) + '='*25
         print pd.DataFrame.from_dict(params, orient='index')
@@ -518,9 +539,9 @@ def run_models(
         history_df['runtime'] = runtime_history.runtime
         history_df.to_csv(history_filename, index=False)
 
-        # Load best model.
-        model_filename = os.path.join(dir_this_model, 'weights.hdf5')
-        model = load_model(model_filename)
+        # # Load best model.
+        # model_filename = os.path.join(dir_this_model, 'weights.hdf5')
+        # model = load_model(model_filename)
         
         if show_plot:
             plot_errors(history_df)
@@ -744,6 +765,7 @@ def get_histories_df(dir_models_set):
             params_df = pd.DataFrame.from_dict(params, orient='index').reset_index()
             params_df.columns = param_colnames
         except IOError:
+            # warnings.warn(str(e))
             # In case it's before I started pickling parameters as dictionaries.
             params_df = pd.read_csv(os.path.join(dir_models_set, model_name, 'params.csv'),
                                     header=None,
@@ -833,10 +855,6 @@ def plot_series_activations(
     plt.show()
     
     return gs
-
-
-def get_standardized_app_names(house_id, house_app_name):
-    return apps.loc[(apps['House']==house_id) & (apps[create_app_dict()[house_app_name]['col']]==1), 'Appliance'].values
 
 
 def plot_pred_scatter(
@@ -936,6 +954,17 @@ def get_activations(x, truncated_model):
     return truncated_model.predict(reshape_as_tensor([x]))[0].T
 
 
+def reduce_dims_activations(activations, k): 
+    '''
+    Use PCA to reduce dimensionality of activations. activations is 
+    the N x [|filters|] matrix and k is number of output dimensions.
+    '''
+    if activations.shape[0] < k:
+        return activations
+    activations_pca = PCA(k).fit_transform(activations.T).T
+    return activations_pca - activations_pca.min()  # scale so min is zero
+
+
 if __name__ == '__main__':
 
     dir_proj = '/Users/sipola/Google Drive/education/coursework/graduate/edinburgh/dissertation/thesis'
@@ -1005,10 +1034,11 @@ if __name__ == '__main__':
 
         def random_params():
             return {
-                'num_conv_layers': np.random.randint(3, 8),
+                # 'num_conv_layers': np.random.randint(3, 8),
+                'num_conv_layers': np.random.randint(6, 8),
                 'num_dense_layers': np.random.randint(1, 3),
                 'start_filters': int(rand_geom(4, 9)),
-                'deepen_filters': True,
+                'deepen_filters': False,
                 'kernel_size': int(rand_geom(3, 7)),
                 'strides': int(rand_geom(1, 3)),
                 'dilation_rate': 1,
@@ -1030,9 +1060,9 @@ if __name__ == '__main__':
 
             print 'starting modeling loops...'
 
-            # for target_type in shuffle(['energy', 'activations']):
-            for target_type in ['energy', 'activations']:
-                for app_names in ['dishwasher', 'microwave', 'fridge']:
+            for target_type in shuffle(['energy', 'activations']):
+                # for app_names in shuffle(APP_NAMES + [APP_NAMES]):  # each element can be a list or a basestring
+                for app_names in shuffle(APP_NAMES + [APP_NAMES]):
 
                     print '\n\n' + '*'*25
                     print 'target variable: {}'.format(target_type)
@@ -1041,7 +1071,7 @@ if __name__ == '__main__':
 
                     run_models(
                         all_data,
-                        target_type,  # 'energy' or 'activations'
+                        target_type,
                         app_names,
                         APP_NAMES,
                         dir_models,

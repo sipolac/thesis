@@ -215,7 +215,10 @@ def create_app_funs(apps, app_dict, app_names):
     def is_a_target_app(house_id, app_num):
         return (apps.loc[(apps['House']==house_id) & (apps['ApplianceNum']==app_num)][app_cols].values).any()
 
-    return (get_house_app_tuples, get_app_nums, get_app_name, is_a_target_app)
+    def get_standardized_app_names(house_id, house_app_name):
+        return apps.loc[(apps['House']==house_id) & (apps[create_app_dict()[house_app_name]['col']]==1), 'Appliance'].values
+
+    return (get_house_app_tuples, get_app_nums, get_app_name, is_a_target_app, get_standardized_app_names)
 
 
 def create_load_funs(dir_refit):
@@ -288,13 +291,30 @@ def get_df(house_id, use_app_names=False, dt_start=None, dt_end=None, include_is
     return df
 
 
-def plot_day(house_id, dt, apps_to_plot=None, figsize=(8,5), ax=None, cmap=plt.cm.tab10):
+def plot_day(
+    house_id,
+    dt_start,
+    dt_end=None,
+    apps_to_plot=None,
+    figsize=(8,5),
+    ax=None,
+    cmap=plt.cm.tab10,
+    alpha_aggregate=None,
+    text_x_location=0.5  # alignment of text giving house_id and datetime, between 0 and 1
+):
     '''
     Plot time series of power data for each appliance, for specified house and date(time).
     '''
     
+    if dt_end is not None:
+        assert dt_end - dt_start <= timedelta(days=1)
+    
+    alpha = 0.7  # opacity for lines in plot
+    if alpha_aggregate is None:
+        alpha_aggregate = alpha
+
     ts_series = load_ts(house_id)
-    ts_mask = get_ts_mask(ts_series, dt)
+    ts_mask = get_ts_mask(ts_series, dt_start, dt_end)
     
     # Create time index for data.
     df = pd.DataFrame({'Unix': ts_series[ts_mask]}) # add first column to df (timestamp)
@@ -314,15 +334,21 @@ def plot_day(house_id, dt, apps_to_plot=None, figsize=(8,5), ax=None, cmap=plt.c
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(111)
    
-    # Plot appliances.
+    # Plot appliances. Indexing for all appliances instead of those we're plotting
+    # keeps the colors consistent with a plot that shows all appliances.
     for i, app_name in enumerate(list(df)):  # list() gives column names of DataFrame
         if app_name in apps_to_plot:
-            df[app_name].plot(alpha=0.7, ax=ax, color=cmap(i))
+            # Determine transparency. Optionally make aggregate 
+            alpha_this = alpha_aggregate if i==0 else alpha
+            df[app_name].plot(alpha=alpha_this, ax=ax, color=cmap(i))
     ax.set_xlabel('')
     ax.set_ylabel('Power (Watts)')
-    ax.text(x=min(df.index) + (max(df.index) - min(df.index)) / 2,
+
+    # Add small text to indicate house number and date. Occasionally it conflicts with
+    # the legend.
+    ax.text(x=min(df.index) + (max(df.index) - min(df.index)) * text_x_location,
             y=df[apps_to_plot].max().max(),
-            s='House {}\n{}'.format(house_id, dt.date().strftime('%Y-%m-%d')),
+            s='House {}\n{}'.format(house_id, dt_start.date().strftime('%Y-%m-%d')),
             horizontalalignment='center',
             verticalalignment='top')
     ax.legend()
@@ -477,8 +503,8 @@ def create_daily_plots(house_ids, dir_run, figsize=(9,5)):
             dt = dt_start + timedelta(days=days_to_add)
             savefile = os.path.join(house_dir, '{}.pdf'.format(str(dt.date())))
             try:
-                plot_day(house_id, dt, savefile, figsize=figsize)
                 raise NotImplementedError  # need to update saving functionality of this; savefile is no longer an arg
+                plot_day(house_id, dt, savefile, figsize=figsize)
             except TypeError:
                 # DataFrame has no columns b/c there's no data for that day.
                 pass
@@ -1120,8 +1146,8 @@ if __name__ == '__main__':
     APP_NAMES = ['fridge', 'kettle', 'washing machine', 'dishwasher', 'microwave']
     HOUSE_IDS_VAL_TEST = [2,9,20]
     HOUSE_IDS_TRAIN = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_VAL_TEST]
-    HOUSE_IDS_SOLAR = [3,11,21]
-    HOUSE_IDS_NOT_SOLAR = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_SOLAR]
+    # HOUSE_IDS_SOLAR = [3,11,21]
+    # HOUSE_IDS_NOT_SOLAR = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_SOLAR]
     # TRAIN_VAL_DATE_MAX = datetime(2015,2,28)
 
     # save_refit_data(dir_refit_csv=dir_refit_csv, dir_refit_np=dir_refit, nrows=None)
