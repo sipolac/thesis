@@ -27,48 +27,18 @@ import matplotlib.pyplot as plt
 matplotlib.style.use('ggplot')
 
 
-# def get_params_appliance():
-#     '''Defines parameters for all appliances of interest'''
+def get_house_id_groups():
+    '''
+    Define which houses are in which set.
+    '''
+    house_ids = range(1, 22); house_ids.remove(14)  # no house 14
+    # house_ids_test_unseen = [2,9,20]  # original test/val
+    house_ids_test_unseen = [2,5,15]  # original test/val
+    house_ids_not_test_unseen = [h for h in house_ids if h not in house_ids_test_unseen]
+    # house_ids_solar = [3,11,21]  # according to paper
+    house_ids_solar = [1,11,21]  # according to inspection
+    return house_ids, house_ids_test_unseen, house_ids_not_test_unseen, house_ids_solar
 
-#     # Credit: Mingjun Zhong and Jack Kelly
-#     return {
-#         'kettle':{
-#             'windowlength':129,
-#             'on_power_threshold':2000,
-#             'max_on_power':3998,
-#             'mean':700,
-#             'std':1000,
-#             's2s_length':128
-#             },
-#         'microwave':{
-#             'windowlength':129,
-#             'on_power_threshold':200,
-#             'max_on_power':3969,
-#             'mean':500,
-#             'std':800,
-#             's2s_length':128},
-#         'fridge':{
-#             'windowlength':299,
-#             'on_power_threshold':50,
-#             'max_on_power':3323,
-#             'mean':200,
-#             'std':400,
-#             's2s_length':512},
-#         'dishwasher':{
-#             'windowlength':599,
-#             'on_power_threshold':10,
-#             'max_on_power':3964,
-#             'mean':700,
-#             'std':1000,
-#             's2s_length':1536},
-#         'washingmachine':{
-#             'windowlength':599,
-#             'on_power_threshold':20,
-#             'max_on_power':3999,
-#             'mean':400,
-#             'std':700,
-#             's2s_length':2000}
-#     }
 
 def make_app_params_dict():
     '''Defines parameters for all appliances of interest'''
@@ -1127,7 +1097,7 @@ if __name__ == '__main__':
     swap_prob = 1/2
     include_distractor_prob = 1/2
     synthetic_data_runs = 10
-    prop_train = 0.85
+    prop_train = 0.60
 
     dir_proj = '/Users/sipola/Google Drive/education/coursework/graduate/edinburgh/dissertation/thesis'
     dir_data = os.path.join(dir_proj, 'data')
@@ -1142,13 +1112,8 @@ if __name__ == '__main__':
     path_apps = os.path.join(dir_data, 'appliances.csv')
     path_daily_stats = os.path.join(dir_data, 'stats_by_day.pkl')
 
-    HOUSE_IDS = range(1, 22); HOUSE_IDS.remove(14)  # no house 14
     APP_NAMES = ['fridge', 'kettle', 'washing machine', 'dishwasher', 'microwave']
-    HOUSE_IDS_VAL_TEST = [2,9,20]
-    HOUSE_IDS_TRAIN = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_VAL_TEST]
-    # HOUSE_IDS_SOLAR = [3,11,21]
-    # HOUSE_IDS_NOT_SOLAR = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_SOLAR]
-    # TRAIN_VAL_DATE_MAX = datetime(2015,2,28)
+    HOUSE_IDS, HOUSE_IDS_TEST_UNSEEN, HOUSE_IDS_NOT_TEST_UNSEEN, HOUSE_IDS_SOLAR = get_house_id_groups()
 
     # save_refit_data(dir_refit_csv=dir_refit_csv, dir_refit_np=dir_refit, nrows=None)
 
@@ -1156,7 +1121,7 @@ if __name__ == '__main__':
     app_dict = create_app_dict()
     apps = apps_add_cols_from_patterns(apps, app_dict)
 
-    get_house_app_tuples, get_app_nums, get_app_name, is_a_target_app = create_app_funs(apps, app_dict, APP_NAMES)
+    get_house_app_tuples, get_app_nums, get_app_name, is_a_target_app, get_standardized_app_names = create_app_funs(apps, app_dict, APP_NAMES)
     load_app, load_ts, load_issues = create_load_funs(dir_refit)
 
     # create_daily_plots(HOUSE_IDS, dir_run)
@@ -1175,7 +1140,7 @@ if __name__ == '__main__':
         print '=============== RUN NUM {} ==============='.format(run_num)
         X, Y1, Y2, x_house, x_date = create_synthetic_data(
             dstats,
-            HOUSE_IDS_TRAIN,
+            HOUSE_IDS_NOT_TEST_UNSEEN,
             train_dts,
             APP_NAMES,
             swap_prob,
@@ -1198,15 +1163,16 @@ if __name__ == '__main__':
     '''
     Possible test appliances.
     2. fridge-freezer; standard otherwise
+    3. fridge-freezer; has tumble dryer; solar if you believe official README
     5. fridge-freezer; has tumble dryer
     9. fridge-freezer; washer-dryer and washing machine
     15. fridge-freezer; has tumble dryer
     20. fridge and freezer; has tumble dryer
 
     Bad test appliances (missing crucial target appliance or has bad data (solar)).
-    1: no kettle
+    1: no kettle; solar if you believe inspection
     4. no dishwasher
-    3. solar
+    3. solar if you believe official README
     6. no fridge-freezer
     8. no dishwasher
     7. no microwave

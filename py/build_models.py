@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import numpy as np
 import re
+import shutil
 
 import time
 from datetime import datetime, date, timedelta
@@ -156,14 +157,22 @@ def remove_tups(data_set, tups, is_debug=True):
     return dat_new
 
 
-def show_data_dims(all_data):
+def show_data_dims(all_data, train_dates=None):
     '''
     Debug function for printing out dimensions of all data packet.
     '''
-    for key in all_data.keys():
-        print key, type(all_data[key])
-        for key, dat in all_data[key].iteritems():
+    house_ids = range(1, 22); house_ids.remove(14)  # too annoying to bring in the real array for this
+
+    for split_key in all_data.keys():
+        print split_key, type(all_data[split_key])
+        for key, dat in all_data[split_key].iteritems():
             print '    {}: {}'.format(key, dat.shape)
+        print '    houses: {}'.format(list(set(all_data[split_key]['x_house'])))
+        print '    missing houses: {}'.format([h for h in house_ids if h not in list(set(all_data[split_key]['x_house']))])
+        print '    num. unique days: {}'.format(len(set(all_data[split_key]['x_date'])))
+        if train_dates is not None:
+            print '    has training dates: {}'.format(any([d in train_dates for d in list(set(all_data[split_key]['x_date']))]))
+            print '    has non-training dates: {}'.format(any([d not in train_dates for d in list(set(all_data[split_key]['x_date']))]))
         print ''
 
 
@@ -178,66 +187,14 @@ def remove_solar_from_real(all_data, house_ids_solar):
     return all_data
 
 
-def split_real_into_train_and_valtest(all_data, house_ids_train, train_dates):
-    '''
-    Split real data into training and val/test. Deletes the "real" dataset afterward.
-    '''
-    assert 'real' in all_data.keys()
-    
-    # Split real data into train and val/test (same dataset for now).
-    train_mask_real = (np.in1d(all_data['real']['x_date'], train_dates)) & \
-                      (np.in1d(all_data['real']['x_house'], house_ids_train))
-    n_train_real = sum(train_mask_real)
-    print 'real obs for training: {} ({:0.2g}% of total)'.format(
-        n_train_real,
-        n_train_real / all_data['real']['X'].shape[0] * 100
-    )
-    all_data['real_train'] = {}
-    all_data['val_test'] = {}  # test doesn't take synthetic data, so don't need "real_" suffix
-    for key, dat in all_data['real'].iteritems():
-        all_data['real_train'][key] = dat[train_mask_real]
-        all_data['val_test'][key] = dat[~train_mask_real]
-    del all_data['real']
-    
-    return all_data
-
-
-def split_valtest_into_val_and_test(all_data, val_test_size=0.5):
-    '''
-    Split val/test data into validation and test data. This is all real (non-synthetic).
-    '''
-    assert 'val_test' in all_data.keys()
-
-    # Be absolutely sure about order of keys and data.
-    keys = []
-    dats = []
-    for key, dat in all_data['val_test'].iteritems():
-        keys.append(key)
-        dats.append(dat)
-
-    val_test_split_dats = train_test_split(*dats,
-                                           train_size=val_test_size,  # validation set proportion from combined val-test data set
-                                           stratify=all_data['val_test']['x_house'])
-    val_dat = val_test_split_dats[::2]
-    test_dat = val_test_split_dats[1::2]
-
-    all_data['val'] = {}
-    all_data['test'] = {}
-    for i, key in enumerate(keys):  # rely on order from before
-        all_data['val'][key] = val_dat[i]
-        all_data['test'][key] = test_dat[i]
-
-    del all_data['val_test']
-
-    return all_data
-
-
 def prepare_real_data(dir_for_model_real,
                       dstats,
                       house_ids_solar,
-                      house_ids_train,
+                      house_ids_not_test_unseen,
+                      house_ids_test_unseen,
                       train_dates,
-                      all_data = {}):
+                      all_data = {},
+                      is_debug=True):
 
     '''
     Process real data for model.
@@ -259,12 +216,47 @@ def prepare_real_data(dir_for_model_real,
     corr_tups = get_bad_data_tups(dstats, repeat_cond)
     all_data['real'] = remove_tups(all_data['real'], corr_tups)
 
-    print 'splitting into training, validation and test data...'
-    all_data = split_real_into_train_and_valtest(all_data, house_ids_train, train_dates)
-    all_data = split_valtest_into_val_and_test(all_data)
+    print 'splitting into training, validation/test (seen) and test (unseen)...'
     
-    # print 'datasets: {}'.format(all_data.keys())
+    # Split real data into train, val/test for seen houses (same dataset for now), and test for unseen houses.
+    masks = {}
+    masks['real_train'] = (np.in1d(all_data['real']['x_house'], house_ids_not_test_unseen)) &\
+        (np.in1d(all_data['real']['x_date'], train_dates)) 
+    masks['val_test_seen'] = (np.in1d(all_data['real']['x_house'], house_ids_not_test_unseen)) &\
+        ~(np.in1d(all_data['real']['x_date'], train_dates)) 
+    masks['test_unseen'] = np.in1d(all_data['real']['x_house'], house_ids_test_unseen)
+
+    # Print split ratios.
+    N_real = all_data['real']['x_house'].shape[0]
+    print '-----'
+    print '{} training'.format(sum(masks['real_train']) / N_real)
+    print '{} validation, seen (combined)'.format(sum(masks['val_test_seen']) / N_real / 2)
+    print '{} test, seen (combined)'.format(sum(masks['val_test_seen']) / N_real / 2)  # same as above
+    print '{} test, unseen'.format(sum(masks['test_unseen']) / N_real)
+    added_bools = masks['real_train'].astype(int) + masks['val_test_seen'].astype(int) + masks['test_unseen'].astype(int)
+    if (min(added_bools), max(added_bools)) != (1, 1):
+        print 'some obs in split were duplicated or missed!'
+    if sum(masks['real_train']) + sum(masks['val_test_seen']) + sum(masks['test_unseen']) != N_real:
+        print 'num. obs in in splits don`t equal num. obs in original data'
+    print '-----'
+
+    for split_key, mask in masks.iteritems():
+        all_data[split_key] = apply_to_dict(lambda x: x[mask], all_data['real'])
+
+    print 'splitting validation/test (seen) into validation and test (seen)...'
+    idxs_list = train_test_split(
+        range(all_data['val_test_seen']['X'].shape[0]),
+        train_size=0.5,  # split 50/50
+        stratify=all_data['val_test_seen']['x_house']
+    )
+    idxs = {}
+    idxs['val'] = idxs_list[0]  # index doesn't matter
+    idxs['test_seen'] = idxs_list[1]  # index doesn't matter
+    for split_key, idx in idxs.iteritems():
+        all_data[split_key] = apply_to_dict(lambda x: x[idx], all_data['val_test_seen'])
     
+    del all_data['real'], all_data['val_test_seen']
+
     return all_data
 
 
@@ -446,7 +438,8 @@ def run_models(
     fit_verbose = 1,
     show_plot = False,
     print_summary = True,
-    model_init_dir = None  # not really initialization; just taking params
+    model_init_dir = None,  # not really initialization; just taking params
+    model_num_stop = None
 ):
     
     assert target_type in ['energy', 'activations']
@@ -457,6 +450,12 @@ def run_models(
     steps_per_epoch = total_obs_per_epoch // batch_size
     dir_models_set = os.path.join(dir_models, modeling_group_name, target_type, app_names_to_filename(app_names))
     Y_key = 'Y1' if target_type=='energy' else 'Y2'  # choose which targets to use
+
+    # "Append" results to last runs of models, if they exist?
+    max_model_num = get_max_model_num(continue_from_last_run, dir_models_set)
+    if model_num_stop is not None and max_model_num >= model_num_stop:
+        print 'no models to run!'
+        return None
 
     # Get the index in the Y array of the target appliance(s).
     app_idx = []
@@ -478,10 +477,11 @@ def run_models(
                               batch_size = batch_size,
                               real_to_synth_ratio = real_to_synth_ratio)
 
-    # "Append" results to last runs of models, if they exist?
-    max_model_num = get_max_model_num(continue_from_last_run, dir_models_set)
-
     for model_num in np.arange(models_to_run) + max_model_num:
+
+        if model_num_stop is not None and model_num >= model_num_stop:
+            print 'no more models to run!'
+            return None
 
         model_name = 'model_{}'.format(model_num)
         # model_name = 'simple_small'
@@ -506,33 +506,40 @@ def run_models(
         params_pkl_filename = os.path.join(dir_this_model, 'params.pkl')
         makedirs2(dir_this_model)
         
-        # Save target scaler to recover targets later. Save for every model just in case
-        # data changes or something (even though if it doesn't change you can use the same
-        # target scaler for all models for this target type / app names / modeling group
-        # combination)
-        pickle.dump(target_scaler, open(os.path.join(dir_this_model, 'target_scaler.pkl'), 'wb'))
+        try:
 
-        # Save params in two forms: CSV for easy opening w/ Excel, and pickled to
-        # preserve data in correct format (otherwise all param values are converted
-        # into strings).
-        pickle.dump(params, open(params_pkl_filename, 'wb'))
-        pd.DataFrame.from_dict(params, orient='index').to_csv(params_csv_filename, header=False)
+            # Save target scaler to recover targets later. Save for every model just in case
+            # data changes or something (even though if it doesn't change you can use the same
+            # target scaler for all models for this target type / app names / modeling group
+            # combination)
+            pickle.dump(target_scaler, open(os.path.join(dir_this_model, 'target_scaler.pkl'), 'wb'))
 
-        # Define callbacks
-        # https://keras.io/callbacks
-        early_stopping = EarlyStopping(monitor='val_loss', patience=patience)
-        csvlogger = CSVLogger(history_filename, separator=',', append=False)
-        checkpointer = ModelCheckpoint(filepath=model_filename, verbose=checkpointer_verbose, save_best_only=True)
-        runtime_history = RuntimeHistory()
+            # Save params in two forms: CSV for easy opening w/ Excel, and pickled to
+            # preserve data in correct format (otherwise all param values are converted
+            # into strings).
+            pickle.dump(params, open(params_pkl_filename, 'wb'))
+            pd.DataFrame.from_dict(params, orient='index').to_csv(params_csv_filename, header=False)
 
-        X_val_fit = reshape_as_tensor(all_data['val']['X'])
-        Y_val_fit = target_scaler.transform(all_data['val'][Y_key][:,app_idx])
-        history = model.fit_generator(generator,
-                                      steps_per_epoch = steps_per_epoch,
-                                      epochs = epochs,
-                                      validation_data=(X_val_fit, Y_val_fit),
-                                      callbacks = [early_stopping, csvlogger, checkpointer, runtime_history],
-                                      verbose = fit_verbose)
+            # Define callbacks
+            # https://keras.io/callbacks
+            early_stopping = EarlyStopping(monitor='val_loss', patience=patience)
+            csvlogger = CSVLogger(history_filename, separator=',', append=False)
+            checkpointer = ModelCheckpoint(filepath=model_filename, verbose=checkpointer_verbose, save_best_only=True)
+            runtime_history = RuntimeHistory()
+
+            X_val_fit = reshape_as_tensor(all_data['val']['X'])
+            Y_val_fit = target_scaler.transform(all_data['val'][Y_key][:,app_idx])
+            history = model.fit_generator(generator,
+                                          steps_per_epoch = steps_per_epoch,
+                                          epochs = epochs,
+                                          validation_data=(X_val_fit, Y_val_fit),
+                                          callbacks = [early_stopping, csvlogger, checkpointer, runtime_history],
+                                          verbose = fit_verbose)
+
+        except KeyboardInterrupt:
+            print 'removing dir due to keyboard interrupt: {}'.format(dir_this_model)
+            shutil.rmtree(dir_this_model)
+            raise KeyboardInterrupt
 
         # Add runtimes to CSV.
         history_df = pd.read_csv(history_filename)
@@ -718,7 +725,7 @@ def get_max_model_num(continue_from_last_run,
 
 
 def app_names_to_filename(app_names):
-    if app_names == APP_NAMES:
+    if app_names == ['fridge', 'kettle', 'washing machine', 'dishwasher', 'microwave']:  # cheating a bit, but a pain to bring in APP_NAMES
         app_names = ['all_apps']
     if isinstance(app_names, basestring):
         app_names = [app_names]
@@ -977,12 +984,8 @@ if __name__ == '__main__':
     path_daily_stats = os.path.join(dir_data, 'stats_by_day.pkl')
 
     N_PER_DAY = 14400  # 24 * 60 * 60 / 6
-    HOUSE_IDS = range(1, 22); HOUSE_IDS.remove(14)  # no house 14
-    HOUSE_IDS_VAL_TEST = [2,9,20]
-    HOUSE_IDS_TRAIN = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_VAL_TEST]
-    # HOUSE_IDS_SOLAR = [3,11,21]  # according to paper
-    HOUSE_IDS_SOLAR = [1,11,21]  # according to inspection
-    HOUSE_IDS_NOT_SOLAR = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_SOLAR]
+    HOUSE_IDS, HOUSE_IDS_TEST_UNSEEN, HOUSE_IDS_NOT_TEST_UNSEEN, HOUSE_IDS_SOLAR = get_house_id_groups()
+    HOUSE_IDS_NOT_SOLAR = [h for h in HOUSE_IDS if h not in HOUSE_IDS_SOLAR]
     # TRAIN_VAL_DATE_MAX = date(2015,2,28)
     APP_NAMES = ['fridge', 'kettle', 'washing machine', 'dishwasher', 'microwave']
     TRAIN_DTS = np.load(os.path.join(dir_for_model_synth, 'train_dts.npy'))
@@ -1001,11 +1004,13 @@ if __name__ == '__main__':
     all_data = prepare_real_data(dir_for_model_real,
                                  dstats,
                                  HOUSE_IDS_SOLAR,
-                                 HOUSE_IDS_TRAIN,
+                                 HOUSE_IDS_NOT_TEST_UNSEEN,
+                                 HOUSE_IDS_TEST_UNSEEN,
                                  train_dates)
 
     all_data = prepare_synth_data(dir_for_model_synth,
                                   all_data = all_data)
+    show_data_dims(all_data, train_dates)
 
     # Want to take diffs before making scalers.
     if take_diff:
@@ -1017,7 +1022,7 @@ if __name__ == '__main__':
     scaler_real, scaler_synth, scaler_both = create_scalers(all_data)
 
     print 'scaling validation and test data...'
-    for split_type in ['val', 'test']:
+    for split_type in ['val', 'test_seen', 'test_unseen']:
         all_data[split_type]['X'] = scaler_real.transform(all_data[split_type]['X'])
         all_data[split_type]['X'] = scaler_both.transform(all_data[split_type]['X'])
 
@@ -1035,10 +1040,10 @@ if __name__ == '__main__':
         def random_params():
             return {
                 # 'num_conv_layers': np.random.randint(3, 8),
-                'num_conv_layers': np.random.randint(6, 8),
+                'num_conv_layers': np.random.randint(4, 8),
                 'num_dense_layers': np.random.randint(1, 3),
                 'start_filters': int(rand_geom(4, 9)),
-                'deepen_filters': False,
+                'deepen_filters': True,
                 'kernel_size': int(rand_geom(3, 7)),
                 'strides': int(rand_geom(1, 3)),
                 'dilation_rate': 1,
@@ -1050,19 +1055,19 @@ if __name__ == '__main__':
                 'use_batch_norm': False,
                 'optimizer': keras.optimizers.Adam,
                 'learning_rate': rand_geom(0.0003, 0.003),
-                'l2_penalty': np.random.choice([0, rand_geom(0.000001, 0.01)]),
+                'l2_penalty': np.random.choice([0, rand_geom(0.00000001, 0.000001)]),
                 'hidden_layer_activation': 'relu',
                 'output_layer_activation': 'relu',
                 'loss': 'mse'
             }
 
-        while True:
+        for _ in range(10):
 
             print 'starting modeling loops...'
 
-            for target_type in shuffle(['energy', 'activations']):
+            for target_type in ['energy', 'activations']:
                 # for app_names in shuffle(APP_NAMES + [APP_NAMES]):  # each element can be a list or a basestring
-                for app_names in shuffle(APP_NAMES + [APP_NAMES]):
+                for app_names in APP_NAMES + [APP_NAMES]:
 
                     print '\n\n' + '*'*25
                     print 'target variable: {}'.format(target_type)
@@ -1086,7 +1091,8 @@ if __name__ == '__main__':
                         patience = 5,
                         checkpointer_verbose = 0,
                         fit_verbose = 1,
-                        show_plot = False)
+                        show_plot = False,
+                        model_num_stop = 20)
 
     else:
         def static_params1():

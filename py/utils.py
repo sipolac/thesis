@@ -268,6 +268,13 @@ def cummin(a):
     return [min(a[:idx+1]) for idx in range(len(a))]
 
 
+def apply_to_dict(fun, dct):
+    dct_new = {}
+    for key, val in dct.iteritems():
+        dct_new[key] = fun(dct[key])
+    return dct_new
+
+
 # def expand_array(a, desired_len):
 #     scale_factor = desired_len / len(a)
 #     assert scale_factor % 1 == 0, 'desired_len needs to be a multiple of the input array'
