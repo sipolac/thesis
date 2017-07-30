@@ -33,11 +33,12 @@ def get_house_id_groups():
     '''
     house_ids = range(1, 22); house_ids.remove(14)  # no house 14
     # house_ids_test_unseen = [2,9,20]  # original test/val
-    house_ids_test_unseen = [2,5,15]  # original test/val
-    house_ids_not_test_unseen = [h for h in house_ids if h not in house_ids_test_unseen]
+    house_ids_val_unseen = [3,9,20]
+    house_ids_test_unseen = [2,5,15]
+    house_ids_seen = [h for h in house_ids if h not in house_ids_test_unseen + house_ids_val_unseen]
     # house_ids_solar = [3,11,21]  # according to paper
     house_ids_solar = [1,11,21]  # according to inspection
-    return house_ids, house_ids_test_unseen, house_ids_not_test_unseen, house_ids_solar
+    return house_ids, house_ids_seen, house_ids_val_unseen, house_ids_test_unseen, house_ids_solar
 
 
 def make_app_params_dict():
@@ -1097,7 +1098,7 @@ if __name__ == '__main__':
     swap_prob = 1/2
     include_distractor_prob = 1/2
     synthetic_data_runs = 10
-    prop_train = 0.60
+    prop_train = 0.70
 
     dir_proj = '/Users/sipola/Google Drive/education/coursework/graduate/edinburgh/dissertation/thesis'
     dir_data = os.path.join(dir_proj, 'data')
@@ -1113,7 +1114,7 @@ if __name__ == '__main__':
     path_daily_stats = os.path.join(dir_data, 'stats_by_day.pkl')
 
     APP_NAMES = ['fridge', 'kettle', 'washing machine', 'dishwasher', 'microwave']
-    HOUSE_IDS, HOUSE_IDS_TEST_UNSEEN, HOUSE_IDS_NOT_TEST_UNSEEN, HOUSE_IDS_SOLAR = get_house_id_groups()
+    HOUSE_IDS, HOUSE_IDS_SEEN, HOUSE_IDS_VAL_UNSEEN, HOUSE_IDS_TEST_UNSEEN, HOUSE_IDS_SOLAR = get_house_id_groups()
 
     # save_refit_data(dir_refit_csv=dir_refit_csv, dir_refit_np=dir_refit, nrows=None)
 
@@ -1140,7 +1141,7 @@ if __name__ == '__main__':
         print '=============== RUN NUM {} ==============='.format(run_num)
         X, Y1, Y2, x_house, x_date = create_synthetic_data(
             dstats,
-            HOUSE_IDS_NOT_TEST_UNSEEN,
+            HOUSE_IDS_SEEN,
             train_dts,
             APP_NAMES,
             swap_prob,

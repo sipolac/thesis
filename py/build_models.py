@@ -190,7 +190,8 @@ def remove_solar_from_real(all_data, house_ids_solar):
 def prepare_real_data(dir_for_model_real,
                       dstats,
                       house_ids_solar,
-                      house_ids_not_test_unseen,
+                      house_ids_seen,
+                      house_ids_val_unseen,
                       house_ids_test_unseen,
                       train_dates,
                       all_data = {},
@@ -216,44 +217,54 @@ def prepare_real_data(dir_for_model_real,
     corr_tups = get_bad_data_tups(dstats, repeat_cond)
     all_data['real'] = remove_tups(all_data['real'], corr_tups)
 
-    print 'splitting into training, validation/test (seen) and test (unseen)...'
+    print 'splitting into training, val/test (seen), val (unseen), and test (unseen)...'
     
     # Split real data into train, val/test for seen houses (same dataset for now), and test for unseen houses.
     masks = {}
-    masks['real_train'] = (np.in1d(all_data['real']['x_house'], house_ids_not_test_unseen)) &\
+    masks['real_train'] = (np.in1d(all_data['real']['x_house'], house_ids_seen)) &\
         (np.in1d(all_data['real']['x_date'], train_dates)) 
-    masks['val_test_seen'] = (np.in1d(all_data['real']['x_house'], house_ids_not_test_unseen)) &\
+    masks['val_test_seen'] = (np.in1d(all_data['real']['x_house'], house_ids_seen)) &\
         ~(np.in1d(all_data['real']['x_date'], train_dates)) 
+    masks['val_unseen'] = np.in1d(all_data['real']['x_house'], house_ids_val_unseen)
     masks['test_unseen'] = np.in1d(all_data['real']['x_house'], house_ids_test_unseen)
 
     # Print split ratios.
     N_real = all_data['real']['x_house'].shape[0]
     print '-----'
     print '{} training'.format(sum(masks['real_train']) / N_real)
-    print '{} validation, seen (combined)'.format(sum(masks['val_test_seen']) / N_real / 2)
+    print '{} val, seen (combined)'.format(sum(masks['val_test_seen']) / N_real / 2)
+    print '{} val, unseen'.format(sum(masks['val_unseen']) / N_real)
     print '{} test, seen (combined)'.format(sum(masks['val_test_seen']) / N_real / 2)  # same as above
     print '{} test, unseen'.format(sum(masks['test_unseen']) / N_real)
-    added_bools = masks['real_train'].astype(int) + masks['val_test_seen'].astype(int) + masks['test_unseen'].astype(int)
+    added_bools = masks['real_train'].astype(int) + masks['val_test_seen'].astype(int) + masks['val_unseen'].astype(int) + masks['test_unseen'].astype(int)
     if (min(added_bools), max(added_bools)) != (1, 1):
         print 'some obs in split were duplicated or missed!'
-    if sum(masks['real_train']) + sum(masks['val_test_seen']) + sum(masks['test_unseen']) != N_real:
+    if sum(masks['real_train']) + sum(masks['val_test_seen']) + sum(masks['val_unseen']) + sum(masks['test_unseen']) != N_real:
         print 'num. obs in in splits don`t equal num. obs in original data'
     print '-----'
 
     for split_key, mask in masks.iteritems():
         all_data[split_key] = apply_to_dict(lambda x: x[mask], all_data['real'])
 
-    print 'splitting validation/test (seen) into validation and test (seen)...'
+    print 'splitting val/test (seen) into val and test (seen)...'
     idxs_list = train_test_split(
         range(all_data['val_test_seen']['X'].shape[0]),
         train_size=0.5,  # split 50/50
         stratify=all_data['val_test_seen']['x_house']
     )
     idxs = {}
-    idxs['val'] = idxs_list[0]  # index doesn't matter
+    idxs['val_seen'] = idxs_list[0]  # index doesn't matter
     idxs['test_seen'] = idxs_list[1]  # index doesn't matter
     for split_key, idx in idxs.iteritems():
         all_data[split_key] = apply_to_dict(lambda x: x[idx], all_data['val_test_seen'])
+    
+    print 'combining val (seen) and val (unseen) into val'
+    all_data['val'] = {}
+    for key in all_data['val_seen'].keys():  # can take keys of any split type
+        all_data['val'][key] = np.concatenate((
+            all_data['val_seen'][key],
+            all_data['val_unseen'][key]
+        ))
     
     del all_data['real'], all_data['val_test_seen']
 
