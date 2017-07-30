@@ -868,11 +868,13 @@ def plot_pred_scatter(
     y,
     y_hat,
     x_house,
+    house_ids_not_test_unseen,
+    file_suffix,
     save_dir = None,
     title = None,
     lowess = False,
     fit_reg = True,
-    palette = np.array(sns.color_palette('tab10', 10))[[1,0]],  # gets blue and orange from tab10 palette
+    palette = np.array(sns.color_palette('tab10', 10))[[0,1]],  # gets blue and orange from tab10 palette
 ):
 
     plt.close()
@@ -887,7 +889,7 @@ def plot_pred_scatter(
     # Create dataset for plotting.
     plot_data = pd.DataFrame.from_dict({'Actual': y, 'Predicted': y_hat, 'House': x_house})
     plot_data['House type'] = 'unseen'
-    plot_data.loc[plot_data['House'].isin(HOUSE_IDS_TRAIN), 'House type'] = 'seen'
+    plot_data.loc[plot_data['House'].isin(house_ids_not_test_unseen), 'House type'] = 'seen'
 
     plot_args = {
         'x': 'Actual',
@@ -931,10 +933,11 @@ def plot_pred_scatter(
     plt.subplots_adjust(top=0.88)
     g.fig.suptitle(title, size=14)
     if save_dir is not None:
-        filename = '{}_{}_{}.pdf'.format(
+        filename = '{}_{}_{}_{}.pdf'.format(
             'predscatterbyhouse',
             target_type,
-            app_names_to_filename(app_names))
+            app_names_to_filename(app_names),
+            file_suffix)
         plt.savefig(os.path.join(plot_dir, filename))
     plt.show()
         

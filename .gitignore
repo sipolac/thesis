@@ -18,6 +18,7 @@ data/refit
 data/bank
 data/for_model
 data/models
+data/tmp
 data/*.db
 data/*.7z
 data/*.pkl
