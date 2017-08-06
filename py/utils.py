@@ -111,6 +111,34 @@ def calc_diff(df_col, pad_end=True, nan_fill=None):
     return np.append(beg, end).astype(int)
 
 
+def moving_avg(x, window_width):
+    '''
+    Calculate moving average.
+    Source: https://stackoverflow.com/a/34387987/4794432
+    '''
+    cumsum_vec = np.cumsum(np.insert(x, 0, 0)) 
+    ma_vec = (cumsum_vec[window_width:] - cumsum_vec[:-window_width]) / window_width
+    return ma_vec
+
+
+def calc_loss(y, y_hat, loss_type):
+    '''
+    Calculates MSE and standard error.
+    '''
+    assert len(y)==len(y_hat)
+    assert loss_type in ['mse', 'mae']
+    y, y_hat = np.array(y), np.array(y_hat)
+    N = len(y)
+    if loss_type=='mse':
+        L = (y - y_hat)**2
+    elif loss_type=='mae':
+        L = np.abs(y - y_hat)
+    else:
+        raise ValueError('loss_type not recognized')
+    se = np.sqrt(np.var(L) / N)
+    return L, np.mean(L), se
+
+
 def align_arrays(actual, desired, padder=None, is_debug=False):
     '''
     Returns indices idx of actual array such that actual[idx[i]] is that maximum
@@ -273,6 +301,70 @@ def apply_to_dict(fun, dct):
     for key, val in dct.iteritems():
         dct_new[key] = fun(dct[key])
     return dct_new
+
+
+def to_precision(x,p):
+    """
+    Source: http://randlet.com/blog/python-significant-figures-format/
+    Changed math.pow to pow...seems to work.
+    
+    returns a string representation of x formatted with a precision of p
+
+    Based on the webkit javascript implementation taken from here:
+    https://code.google.com/p/webkit-mirror/source/browse/JavaScriptCore/kjs/number_object.cpp
+    """
+
+    x = float(x)
+
+    if x == 0.:
+        return "0." + "0"*(p-1)
+
+    out = []
+
+    if x < 0:
+        out.append("-")
+        x = -x
+
+    e = int(np.log10(x))
+    tens = pow(10, e - p + 1)
+    n = np.floor(x/tens)
+
+    if n < pow(10, p - 1):
+        e = e -1
+        tens = pow(10, e - p+1)
+        n = np.floor(x / tens)
+
+    if abs((n + 1.) * tens - x) <= abs(n * tens -x):
+        n = n + 1
+
+    if n >= pow(10,p):
+        n = n / 10.
+        e = e + 1
+
+    m = "%.*g" % (p, n)
+
+    if e < -2 or e >= p:
+        out.append(m[0])
+        if p > 1:
+            out.append(".")
+            out.extend(m[1:p])
+        out.append('e')
+        if e > 0:
+            out.append("+")
+        out.append(str(e))
+    elif e == (p -1):
+        out.append(m)
+    elif e >= 0:
+        out.append(m[:e+1])
+        if e+1 < len(m):
+            out.append(".")
+            out.extend(m[e+1:])
+    else:
+        out.append("0.")
+        out.extend(["0"]*-(e+1))
+        out.append(m)
+
+    return "".join(out)
 
 
 # def expand_array(a, desired_len):

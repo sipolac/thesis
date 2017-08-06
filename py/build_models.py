@@ -232,9 +232,9 @@ def prepare_real_data(dir_for_model_real,
     N_real = all_data['real']['x_house'].shape[0]
     print '-----'
     print '{} training'.format(sum(masks['real_train']) / N_real)
-    print '{} val, seen (combined)'.format(sum(masks['val_test_seen']) / N_real / 2)
+    print '{} val, seen'.format(sum(masks['val_test_seen']) / N_real / 2)
     print '{} val, unseen'.format(sum(masks['val_unseen']) / N_real)
-    print '{} test, seen (combined)'.format(sum(masks['val_test_seen']) / N_real / 2)  # same as above
+    print '{} test, seen'.format(sum(masks['val_test_seen']) / N_real / 2)  # same as above
     print '{} test, unseen'.format(sum(masks['test_unseen']) / N_real)
     added_bools = masks['real_train'].astype(int) + masks['val_test_seen'].astype(int) + masks['val_unseen'].astype(int) + masks['test_unseen'].astype(int)
     if (min(added_bools), max(added_bools)) != (1, 1):
@@ -430,6 +430,10 @@ def create_target_scaler(all_data, Y_key, app_idx):
     return target_scaler
 
 
+class BadModel(Exception):
+    pass
+
+
 def run_models(
     all_data,
     target_type,  # 'energy' or 'activations'
@@ -450,7 +454,11 @@ def run_models(
     show_plot = False,
     print_summary = True,
     model_init_dir = None,  # not really initialization; just taking params
-    model_num_stop = None
+    model_num_stop = None,
+    check_for_collapsed_model = True,
+    check_for_too_many_params = True,
+    num_model_attempts = 10,  # if model is "bad" (e.g., collapsed model), will try again
+    fail_if_bad_model = False
 ):
     
     assert target_type in ['energy', 'activations']
@@ -488,6 +496,13 @@ def run_models(
                               batch_size = batch_size,
                               real_to_synth_ratio = real_to_synth_ratio)
 
+    def get_params(params_function):
+        if model_init_dir is None:
+            params = params_function()
+        else:
+            params = pickle.load(open(os.path.join(model_init_dir, 'params.pkl'), 'rb'))
+        return params
+
     for model_num in np.arange(models_to_run) + max_model_num:
 
         if model_num_stop is not None and model_num >= model_num_stop:
@@ -496,17 +511,51 @@ def run_models(
 
         model_name = 'model_{}'.format(model_num)
         # model_name = 'simple_small'
-        
-        if model_init_dir is None:
-            params = params_function()
+
+        if check_for_collapsed_model or check_for_too_many_params:
+            # Check if a conv layer has an input of one unit and output of one unit.
+            # This is considered "collapsed," meaning it collapsed to a single point
+            # in time and is unlikely to be a good model, especially when deepen_filters=True
+            for attempt_num in range(num_model_attempts):
+                params = get_params(params_function)
+                model = create_model(len(app_names), N_PER_DAY, **params)
+                
+                collapsed = False
+                too_many_params = False
+                if check_for_too_many_params and model.count_params() > 1000000:
+                    too_many_params = True
+                for layer in model.layers:
+                    if check_for_collapsed_model and layer.input_shape[1]==1 and layer.output_shape[1]==1:
+                        collapsed = True
+                # bad_model = collapsed or too_many_params
+                
+                if not (collapsed or too_many_params):
+                    # This is good
+                    break
+
+                if attempt_num+1 < num_model_attempts:
+                    if collapsed:
+                        print 'collapsed model on attempt {}; trying again...'.format(attempt_num+1)
+                    if too_many_params:
+                        print 'too many params on attempt {}; trying again...'.format(attempt_num+1)
+                    continue
+                else:
+                    if fail_if_bad_model:
+                        raise BadModel  # stop program
+                    else:
+                        pass  # whatever...just use the collapsed model
         else:
-            params = pickle.load(open(os.path.join(model_init_dir, 'params.pkl'), 'rb'))
+            params = get_params(params_function)
+        
+        # Don't want to put this in a loop or else you'll get the TensorFlow error?
+        # ValueError: Operation u'init_[##]' has been marked as not fetchable.
+        # Although that error went away after restarting kernel in Jupyter notebook...
+        model = create_model(len(app_names), N_PER_DAY, **params)
         
         print '='*25 + '\n{}\n'.format(model_name) + '='*25
         print pd.DataFrame.from_dict(params, orient='index')
         print '\n' + '='*25 + '\n'
 
-        model = create_model(len(app_names), N_PER_DAY, **params)
         if print_summary:
             print model.summary()
 
@@ -763,7 +812,7 @@ def plot_errors(history_df, figsize=(11,5), title='Training and validation loss 
     return ax
 
 
-def get_histories_df(dir_models_set):
+def get_histories_df(dir_models_set, val_loss_fn=lambda x: min(moving_avg(x.values, 3))):
 
     model_files = get_model_files(dir_models_set)
 
@@ -813,7 +862,8 @@ def get_histories_df(dir_models_set):
     params_wide.rename(columns={'loss': 'loss_fn'}, inplace=True)  # to make sure there aren't two loss columns
     history_best = history_all.groupby('model').agg({
         'loss': min,
-        'val_loss': min,
+        # 'val_loss': min,
+        'val_loss': val_loss_fn,
         'runtime': min,
         'epoch': len
     })
@@ -998,8 +1048,8 @@ if __name__ == '__main__':
     path_daily_stats = os.path.join(dir_data, 'stats_by_day.pkl')
 
     N_PER_DAY = 14400  # 24 * 60 * 60 / 6
-    HOUSE_IDS, HOUSE_IDS_TEST_UNSEEN, HOUSE_IDS_NOT_TEST_UNSEEN, HOUSE_IDS_SOLAR = get_house_id_groups()
-    HOUSE_IDS_NOT_SOLAR = [h for h in HOUSE_IDS if h not in HOUSE_IDS_SOLAR]
+    HOUSE_IDS, HOUSE_IDS_SEEN, HOUSE_IDS_VAL_UNSEEN, HOUSE_IDS_TEST_UNSEEN, HOUSE_IDS_SOLAR = get_house_id_groups()
+    HOUSE_IDS_NOT_SOLAR = [house_id for house_id in HOUSE_IDS if house_id not in HOUSE_IDS_SOLAR]
     # TRAIN_VAL_DATE_MAX = date(2015,2,28)
     APP_NAMES = ['fridge', 'kettle', 'washing machine', 'dishwasher', 'microwave']
     TRAIN_DTS = np.load(os.path.join(dir_for_model_synth, 'train_dts.npy'))
@@ -1018,13 +1068,15 @@ if __name__ == '__main__':
     all_data = prepare_real_data(dir_for_model_real,
                                  dstats,
                                  HOUSE_IDS_SOLAR,
-                                 HOUSE_IDS_NOT_TEST_UNSEEN,
+                                 HOUSE_IDS_SEEN,
+                                 HOUSE_IDS_VAL_UNSEEN,
                                  HOUSE_IDS_TEST_UNSEEN,
                                  train_dates)
 
     all_data = prepare_synth_data(dir_for_model_synth,
                                   all_data = all_data)
-    show_data_dims(all_data, train_dates)
+    # show_data_dims(all_data, train_dates)
+    # del all_data['val_seen'], all_data['val_unseen']
 
     # Want to take diffs before making scalers.
     if take_diff:
@@ -1054,7 +1106,7 @@ if __name__ == '__main__':
         def random_params():
             return {
                 # 'num_conv_layers': np.random.randint(3, 8),
-                'num_conv_layers': np.random.randint(4, 8),
+                'num_conv_layers': np.random.randint(4, 9),
                 'num_dense_layers': np.random.randint(1, 3),
                 'start_filters': int(rand_geom(4, 9)),
                 'deepen_filters': True,
@@ -1064,8 +1116,8 @@ if __name__ == '__main__':
                 'do_pool': True,
                 'pool_size': int(rand_geom(2, 5)),
                 'last_dense_layer_size': int(rand_geom(8, 32)),
-                'dropout_rate_after_conv': 0.5,
-                'dropout_rate_after_dense': 0.25,
+                'dropout_rate_after_conv': 0.5,  # should be 0.25?
+                'dropout_rate_after_dense': 0.25,  # should be 0.5?
                 'use_batch_norm': False,
                 'optimizer': keras.optimizers.Adam,
                 'learning_rate': rand_geom(0.0003, 0.003),
@@ -1079,9 +1131,9 @@ if __name__ == '__main__':
 
             print 'starting modeling loops...'
 
-            for target_type in ['energy', 'activations']:
-                # for app_names in shuffle(APP_NAMES + [APP_NAMES]):  # each element can be a list or a basestring
-                for app_names in APP_NAMES + [APP_NAMES]:
+            for target_type in shuffle(['energy', 'activations']):
+                for app_names in shuffle(APP_NAMES + [APP_NAMES]):  # each element can be a list or a basestring
+                # for app_names in APP_NAMES + [APP_NAMES]:
 
                     print '\n\n' + '*'*25
                     print 'target variable: {}'.format(target_type)
@@ -1102,11 +1154,12 @@ if __name__ == '__main__':
                         continue_from_last_run = True,
                         total_obs_per_epoch = 8192,
                         real_to_synth_ratio = 0.5,
-                        patience = 5,
+                        patience = 10,
                         checkpointer_verbose = 0,
                         fit_verbose = 1,
                         show_plot = False,
-                        model_num_stop = 20)
+                        model_num_stop = 25,
+                        num_model_attempts = 10)
 
     else:
         def static_params1():
