@@ -1018,7 +1018,7 @@ def truncate_model(model, conv_layer_index=-1):
     return model_truncated
 
 
-def get_activations(x, truncated_model):
+def get_layer_activations(x, truncated_model):
     '''
     Get activations of hidden layer from truncated model.
     '''
