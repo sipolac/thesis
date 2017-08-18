@@ -1100,7 +1100,7 @@ if __name__ == '__main__':
     synthetic_data_runs = 10
     prop_train = 0.70
 
-    dir_proj = '/Users/sipola/Google Drive/education/coursework/graduate/edinburgh/dissertation/thesis'
+    dir_proj = 'PROJECT_DIRECTORY'
     dir_data = os.path.join(dir_proj, 'data')
     dir_run = os.path.join(dir_proj, 'run', str(date.today()))
     dir_run_synthetic = os.path.join(dir_run, 'synthetic')
@@ -1116,7 +1116,7 @@ if __name__ == '__main__':
     APP_NAMES = ['fridge', 'kettle', 'washing machine', 'dishwasher', 'microwave']
     HOUSE_IDS, HOUSE_IDS_SEEN, HOUSE_IDS_VAL_UNSEEN, HOUSE_IDS_TEST_UNSEEN, HOUSE_IDS_SOLAR = get_house_id_groups()
 
-    # save_refit_data(dir_refit_csv=dir_refit_csv, dir_refit_np=dir_refit, nrows=None)
+    save_refit_data(dir_refit_csv=dir_refit_csv, dir_refit_np=dir_refit, nrows=None)
 
     apps = pd.read_csv(path_apps)
     app_dict = create_app_dict()
@@ -1127,14 +1127,15 @@ if __name__ == '__main__':
 
     # create_daily_plots(HOUSE_IDS, dir_run)
 
-    # dstats = create_daily_stats(HOUSE_IDS, pkl_path=path_daily_stats, nrow=None)
+    dstats = create_daily_stats(HOUSE_IDS, pkl_path=path_daily_stats, nrow=None)
     dstats = pd.read_pickle(path_daily_stats)
     dstats = clean_daily_stats(dstats)
     train_dts = get_train_dts(dstats, prop_train, save_dir=dir_run_synthetic)
     # train_dts = get_train_dts(dstats, prop_train, save_dir=None)
     # train_dts = np.load(os.path.join(dir_run, 'train_dts.npy'))
 
-    # X, Y1, Y2, x_house, x_date = create_real_data(HOUSE_IDS, APP_NAMES, dstats, desired_sample_rate, dir_run_real)  # can remove solar later
+    # Create real data.
+    X, Y1, Y2, x_house, x_date = create_real_data(HOUSE_IDS, APP_NAMES, dstats, desired_sample_rate, dir_run_real)  # can remove solar later
 
     # Create synthetic data.
     for run_num in range(1,synthetic_data_runs+1):
@@ -1150,6 +1151,7 @@ if __name__ == '__main__':
             is_debug=False
             )
 
+    # # Create synthetic data (debug).
     # X, Y1, Y2, x_house, x_date = create_synthetic_data(
     #     dstats,
     #     HOUSE_IDS_TRAIN,
@@ -1162,7 +1164,7 @@ if __name__ == '__main__':
     #     )
 
     '''
-    Possible test appliances.
+    Possible val/test holdout houses.
     2. fridge-freezer; standard otherwise
     3. fridge-freezer; has tumble dryer; solar if you believe official README
     5. fridge-freezer; has tumble dryer
@@ -1170,7 +1172,7 @@ if __name__ == '__main__':
     15. fridge-freezer; has tumble dryer
     20. fridge and freezer; has tumble dryer
 
-    Bad test appliances (missing crucial target appliance or has bad data (solar)).
+    Bad val/test holdout houses (missing crucial target appliance or has bad data (solar)).
     1: no kettle; solar if you believe inspection
     4. no dishwasher
     3. solar if you believe official README

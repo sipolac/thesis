@@ -312,13 +312,7 @@ def take_row_diffs(X):
     X = np.diff(X)
     zs = np.zeros((X.shape[0], 1), dtype=int)
     X = np.concatenate((zs, X), axis=1)
-    return X    
-
-
-# def print_layer_shapes(model):
-#     shape_pattern = 'shape=(.+?), dtype'
-#     for layer in model.layers:
-#         print '{}: {}'.format(layer.name, re.search(shape_pattern, str(layer.output)).group(1))
+    return X
 
 
 def create_model(
@@ -813,6 +807,11 @@ def plot_errors(history_df, figsize=(11,5), title='Training and validation loss 
 
 
 def get_histories_df(dir_models_set, val_loss_fn=lambda x: min(moving_avg(x.values, 3))):
+    '''
+    Return dataframe of history objects output from Keras models. val_loss_fn determines
+    how to calculate validation loss that will later be used to determine which
+    model will be chosen as the ``best" model.
+    '''
 
     model_files = get_model_files(dir_models_set)
 
@@ -882,11 +881,17 @@ def get_histories_df(dir_models_set, val_loss_fn=lambda x: min(moving_avg(x.valu
 
 
 def get_best_model_name(dir_models_set):
+    '''
+    Get model name of the best-performing model.
+    '''
     hist_and_params = get_histories_df(dir_models_set)
     best_model_name = hist_and_params.loc[hist_and_params['val_loss']==hist_and_params['val_loss'].min()].index.values[0]
     return best_model_name
 
 def load_best_model(dir_models_set):
+    '''
+    Load best-performing model.
+    '''
     best_model_name = get_best_model_name(dir_models_set)
     dir_best_model = os.path.join(dir_models_set, best_model_name)
     return load_model(os.path.join(dir_best_model, 'weights.hdf5'))
@@ -902,6 +907,10 @@ def plot_series_activations(
     cmap_series=plt.cm.tab10,
     cmap_heatmap='Greys'
 ):
+    '''
+    Plot daily power series and, below that, a heatmap of activations associated
+    with some convolutional layer for that day.
+    '''
     
     # Define axes.
     fig = plt.figure(figsize=figsize)
@@ -937,6 +946,9 @@ def plot_pred_scatter(
     fit_reg = True,
     palette = np.array(sns.color_palette('tab10', 10))[[0,1]],  # gets blue and orange from tab10 palette
 ):
+    '''
+    Plot predictions vs. targets by house. Color by house type (seen/unseen).
+    '''
 
     plt.close()
     
@@ -1038,7 +1050,7 @@ def reduce_dims_activations(activations, k):
 
 if __name__ == '__main__':
 
-    dir_proj = '/Users/sipola/Google Drive/education/coursework/graduate/edinburgh/dissertation/thesis'
+    dir_proj = 'PROJECT_DIRECTORY'
     dir_data = os.path.join(dir_proj, 'data')
     dir_for_model = os.path.join(dir_data, 'for_model')
     dir_for_model_real = os.path.join(dir_for_model, 'real')
@@ -1055,7 +1067,6 @@ if __name__ == '__main__':
     TRAIN_DTS = np.load(os.path.join(dir_for_model_synth, 'train_dts.npy'))
 
     take_diff = False
-    # val_prop = 0.2
     train_dates = [dt.date() for dt in TRAIN_DTS]
     extreme_percentile_cutoff = 100
 
@@ -1096,180 +1107,66 @@ if __name__ == '__main__':
     # are different each time this is run.
     np.random.seed(int(time.time()))
 
-    real_deal = True
-    if real_deal:
 
-        today = str(date.today())
-        modeling_group_name = 'main'
-        # modeling_group_name = today
+    # Define modeling group and run models.
+    today = str(date.today())
+    modeling_group_name = 'main'
+    # modeling_group_name = today
 
-        def random_params():
-            return {
-                # 'num_conv_layers': np.random.randint(3, 8),
-                'num_conv_layers': np.random.randint(4, 9),
-                'num_dense_layers': np.random.randint(1, 3),
-                'start_filters': int(rand_geom(4, 9)),
-                'deepen_filters': True,
-                'kernel_size': int(rand_geom(3, 7)),
-                'strides': int(rand_geom(1, 3)),
-                'dilation_rate': 1,
-                'do_pool': True,
-                'pool_size': int(rand_geom(2, 5)),
-                'last_dense_layer_size': int(rand_geom(8, 32)),
-                'dropout_rate_after_conv': 0.5,  # should be 0.25?
-                'dropout_rate_after_dense': 0.25,  # should be 0.5?
-                'use_batch_norm': False,
-                'optimizer': keras.optimizers.Adam,
-                'learning_rate': rand_geom(0.0003, 0.003),
-                'l2_penalty': np.random.choice([0, rand_geom(0.00000001, 0.000001)]),
-                'hidden_layer_activation': 'relu',
-                'output_layer_activation': 'relu',
-                'loss': 'mse'
-            }
-
-        for _ in range(10):
-
-            print 'starting modeling loops...'
-
-            for target_type in shuffle(['energy', 'activations']):
-                for app_names in shuffle(APP_NAMES + [APP_NAMES]):  # each element can be a list or a basestring
-                # for app_names in APP_NAMES + [APP_NAMES]:
-
-                    print '\n\n' + '*'*25
-                    print 'target variable: {}'.format(target_type)
-                    print 'target appliance(s): {}'.format(app_names)
-                    print '*'*25 + '\n\n'
-
-                    run_models(
-                        all_data,
-                        target_type,
-                        app_names,
-                        APP_NAMES,
-                        dir_models,
-                        params_function = random_params,
-                        modeling_group_name = modeling_group_name,
-                        models_to_run = 3,
-                        epochs = 100,
-                        batch_size = 32,
-                        continue_from_last_run = True,
-                        total_obs_per_epoch = 8192,
-                        real_to_synth_ratio = 0.5,
-                        patience = 10,
-                        checkpointer_verbose = 0,
-                        fit_verbose = 1,
-                        show_plot = False,
-                        model_num_stop = 25,
-                        num_model_attempts = 10)
-
-    else:
-        def static_params1():
-            return {
-            'num_conv_layers': 7,
-            'num_dense_layers': 3,
-            'start_filters': 2,
+    def random_params():
+        return {
+            # 'num_conv_layers': np.random.randint(3, 8),
+            'num_conv_layers': np.random.randint(4, 9),
+            'num_dense_layers': np.random.randint(1, 3),
+            'start_filters': int(rand_geom(4, 9)),
             'deepen_filters': True,
-            'kernel_size': 3,
-            'strides': 2,
+            'kernel_size': int(rand_geom(3, 7)),
+            'strides': int(rand_geom(1, 3)),
             'dilation_rate': 1,
             'do_pool': True,
-            'pool_size': 2,
-            'last_dense_layer_size': 8,
-            'dropout_rate_after_conv': 0.5,
-            'dropout_rate_after_dense': 0.25,
+            'pool_size': int(rand_geom(2, 5)),
+            'last_dense_layer_size': int(rand_geom(8, 32)),
+            'dropout_rate_after_conv': 0.5,  # should be 0.25?
+            'dropout_rate_after_dense': 0.25,  # should be 0.5?
             'use_batch_norm': False,
             'optimizer': keras.optimizers.Adam,
-            'learning_rate': 0.001,
-            'l2_penalty': 0,
+            'learning_rate': rand_geom(0.0003, 0.003),
+            'l2_penalty': np.random.choice([0, rand_geom(0.00000001, 0.000001)]),
             'hidden_layer_activation': 'relu',
             'output_layer_activation': 'relu',
             'loss': 'mse'
-            }
+        }
 
-        # def static_params2():
-        #     return {
-        #     'num_conv_layers': 5,
-        #     'num_dense_layers': 2,
-        #     'start_filters': 4,
-        #     'deepen_filters': True,
-        #     'kernel_size': 3,
-        #     'strides': 2,
-        #     'dilation_rate': 1,
-        #     'do_pool': True,
-        #     'pool_size': 4,
-        #     'last_dense_layer_size': 8,
-        #     'dropout_rate_after_conv': 0.5,
-        #     'dropout_rate_after_dense': 0.25,
-        #     'use_batch_norm': False,
-        #     'optimizer': keras.optimizers.Adam,
-        #     'learning_rate': 0.001,
-        #     'l2_penalty': 0,
-        #     'hidden_layer_activation': 'relu',
-        #     'output_layer_activation': 'relu',
-        #     'loss': 'mse'
-        #     }
+    for _ in range(10):
 
-        # def random_params():
-        #     return {
-        #         'num_conv_layers': np.random.randint(1, 6),
-        #         'num_dense_layers': np.random.randint(0, 5),
-        #         'start_filters': np.random.choice([2, 4, 8, 16, 32]),
-        #         'deepen_filters': np.random.random() < 0.5,
-        #         'kernel_size': weighted_choice([(3, 1), (6, 1), (12, 1), (24, 1)]),
-        #         'strides': weighted_choice([(1, 1), (2, 1), (3, 1)]),
-        #         'dilation_rate': weighted_choice([(1, 1), (2, 0.13), (3, 0.13)]),
-        #         'do_pool': np.random.random() < 0.5,
-        #         'pool_size': weighted_choice([(2, 1), (4, 1), (8, 1)]),
-        #         'last_dense_layer_size': np.random.choice([8, 16, 32]),
-        #         'dropout_rate_after_conv': np.random.choice([0, 0.1, 0.25, 0.5]),
-        #         'dropout_rate_after_dense': np.random.choice([0, 0.1, 0.25, 0.5]),
-        #         'use_batch_norm': np.random.random() < 0.25,
-        #         'optimizer': np.random.choice([keras.optimizers.Adam,
-        #                                        keras.optimizers.Adagrad,
-        #                                        keras.optimizers.RMSprop]),
-        #         'learning_rate': weighted_choice([(0.01, 0.13),
-        #                                           (0.003, 0.25),
-        #                                           (0.001, 1),
-        #                                           (0.0003, 0.25),
-        #                                           (0.0001, 0.13)]),
-        #         'l2_penalty': weighted_choice([(0, 1), (0.001, 0.25), (0.01, 0.13)])
-        #     }
+        print 'starting modeling loops...'
 
-        run_models(
-            all_data,
-            'energy',  # 'energy' or 'activations'
-            'washing machine',
-            APP_NAMES,
-            dir_models,
-            params_function = static_params1,
-            modeling_group_name = '2017-07-02',
-            models_to_run = 1,
-            epochs = 100,
-            batch_size = 32,
-            continue_from_last_run = True,
-            total_obs_per_epoch = 8192,
-            real_to_synth_ratio = 0.5,
-            patience = 5,
-            checkpointer_verbose = 0,
-            fit_verbose = 1,
-            show_plot = False)
+        for target_type in shuffle(['energy', 'activations']):
+            for app_names in shuffle(APP_NAMES + [APP_NAMES]):  # each element can be a list or a basestring
+            # for app_names in APP_NAMES + [APP_NAMES]:
 
-        # run_models(
-        #     all_data,
-        #     'energy',  # 'energy' or 'activations'
-        #     'washing machine',
-        #     APP_NAMES,
-        #     dir_models,
-        #     params_function = static_params2,
-        #     modeling_group_name = '2017-07-02',
-        #     models_to_run = 1,
-        #     epochs = 100,
-        #     batch_size = 32,
-        #     continue_from_last_run = True,
-        #     total_obs_per_epoch = 8192,
-        #     real_to_synth_ratio = 0.5,
-        #     patience = 5,
-        #     checkpointer_verbose = 0,
-        #     fit_verbose = 1,
-        #     show_plot = False)
+                print '\n\n' + '*'*25
+                print 'target variable: {}'.format(target_type)
+                print 'target appliance(s): {}'.format(app_names)
+                print '*'*25 + '\n\n'
 
-    # 
+                run_models(
+                    all_data,
+                    target_type,
+                    app_names,
+                    APP_NAMES,
+                    dir_models,
+                    params_function = random_params,
+                    modeling_group_name = modeling_group_name,
+                    models_to_run = 3,
+                    epochs = 100,
+                    batch_size = 32,
+                    continue_from_last_run = True,
+                    total_obs_per_epoch = 8192,
+                    real_to_synth_ratio = 0.5,
+                    patience = 10,
+                    checkpointer_verbose = 0,
+                    fit_verbose = 1,
+                    show_plot = False,
+                    model_num_stop = 25,
+                    num_model_attempts = 10)
