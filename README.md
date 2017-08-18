@@ -1,8 +1,6 @@
 # thesis
 
-This contains the code for my thesis for the MSc Artificial Intelligence program at the University of Edinburgh. The thesis is titled "Summarizing electricity usage with a neural network" and is supervised by [Nigel Goddard](http://homepages.inf.ed.ac.uk/ngoddard/).
-
-The abstract is:
+This contains the code used for my master's thesis, which was titled [Summarizing electricity usage with a neural network](https://www.linkedin.com/in/csipola) and supervised by [Nigel Goddard](http://homepages.inf.ed.ac.uk/ngoddard/). This thesis was written for the MSc in Artificial Intelligence program at the University of Edinburgh and submitted in August 2017. The abstract for the thesis is:
 
 > This project explores whether a neural network is capable of predicting summary statistics of electricity usage for five common household appliances given only the aggregate signal of a smart meter. These appliance-level statistics are needed for many kinds of feedback and analytics provided to energy consumers so they can reduce electricity consumption and save on energy bills. An example of such a statistic is the total energy used by a washing machine in a day. Currently the state-of-the-art approach is to use non-intrusive load monitoring (NILM) to predict appliance-level signals timepoint-by-timepoint, and then compute the statistics using these predictions. However, this is indirect, computationally expensive and generally a harder learning problem.
 
@@ -11,13 +9,18 @@ The abstract is:
 > Since this type of learning problem is unexplored, we use a dynamic architecture generation process to find networks that perform well. We also implement a new process for generating more realistic synthetic data that preserves some cross-appliance usage information. Results show that a neural network is in fact capable of predicting appliance-level summary statistics. More importantly, most models generalize successfully to houses that were not used in training and validation, with the best-performing models having an error that is less than half the baseline.
 
 
+To re-run the project:
 
-Before running anything, the cleaned CSV data from the REFIT site, https://pure.strath.ac.uk/portal/en/datasets/refit-electrical-load-measurements-cleaned(9ab14b0e-19ac-4279-938f-27f643078cec).html, needs to be placed in a directory data/CLEAN_REFIT_081116/. Note that the file data/appliances.csv was created "by hand" using the README from the REFIT site.
+1. Place the [cleaned CSV data from the REFIT site](https://pure.strath.ac.uk/portal/en/datasets/refit-electrical-load-measurements-cleaned(9ab14b0e-19ac-4279-938f-27f643078cec).html) into a directory data/CLEAN_REFIT_081116/.
 
-py/create_data.py creates the modeling data. This data is output into a "run" directory that is created in the project directory. This data then needs to be manually moved to a directory data/for_models/. (This manual process avoids accidentally overwriting.)
+2. Run **py/create_data.py**, which creates the data used for the neural network models. This data is output into a directory run/YYYY-MM-DD that is created in the project directory, which then needs to be moved manually to the directory data/for_models/. (This manual process avoids accidentally overwriting.)
 
-py/build_models.py builds the models once the modeling data is in the right location. This takes a *very* long time, but it can by stopped and restarted at any point with no issues.
+3. Run **py/build_models.py**. This builds the models once the modeling data is in the right location. This takes *days* on a CPU, but it can by stopped by a keyboard interrupt and restarted at any point with no issues.
 
-The code in ipynb/ is used to create graphs and tables for the paper. It is also used to make calculations used in the paper. It is not very organized, but the file name is more or less associated with the Python file used to create the data described in the notebook.
+A few notes:
 
-py/utils.py just contains utility functions used by the other Python files.
+- The Jupyter notebooks (\*.ipynb) are used to create graphs, tables and calculations for the paper. It is ad-hoc and very organized (sorry!), but the file names are more or less associated with the Python file used to create the data explored in the notebook.
+
+- If the cleaned REFIT data was updated since this code was written, you may need to make modifications to the directory name and to the function ``save_refit_data`` in py/create_data.py.
+
+- The file data/appliances.csv was created "by hand" using the README from the REFIT site.
