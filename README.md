@@ -1,6 +1,6 @@
 # thesis
 
-This contains the code used for my master's thesis, which is titled [Summarizing electricity usage with a neural network](https://drive.google.com/file/d/0B2eLkoWKdSD0enR4N2d2TEdlT0E/view?usp=sharing) and supervised by [Nigel Goddard](http://homepages.inf.ed.ac.uk/ngoddard/). This thesis was written for the MSc in Artificial Intelligence program at the University of Edinburgh and submitted in August 2017. The abstract for the thesis is:
+This contains the code used for my master's thesis, [Summarizing electricity usage with a neural network](https://drive.google.com/file/d/0B2eLkoWKdSD0enR4N2d2TEdlT0E/view?usp=sharing), which was supervised by [Nigel Goddard](http://homepages.inf.ed.ac.uk/ngoddard/). This thesis was written for the MSc in Artificial Intelligence program at the University of Edinburgh and submitted in August 2017. The abstract for the thesis is:
 
 > This project explores whether a neural network is capable of predicting summary statistics of electricity usage for five common household appliances given only the aggregate signal of a smart meter. These appliance-level statistics are needed for many kinds of feedback and analytics provided to energy consumers so they can reduce electricity consumption and save on energy bills. An example of such a statistic is the total energy used by a washing machine in a day. Currently the state-of-the-art approach is to use non-intrusive load monitoring (NILM) to predict appliance-level signals timepoint-by-timepoint, and then compute the statistics using these predictions. However, this is indirect, computationally expensive and generally a harder learning problem.
 
@@ -15,7 +15,7 @@ To re-run the project:
 
 2. Run **py/create_data.py**, which creates the data used for the neural network models. This data is output into a directory run/YYYY-MM-DD that is created in the project directory, which then needs to be moved manually to the directory data/for_models/. (This manual process avoids accidentally overwriting.)
 
-3. Run **py/build_models.py**. This builds the models once the modeling data is in the right location. This takes *days* on a CPU, but it can by stopped by a keyboard interrupt and restarted at any point with no issues.
+3. Run **py/build_models.py**, which builds the models once the modeling data is in the right location. This takes *days* to run on a CPU, but it can by stopped by a keyboard interrupt and restarted at any point with no issues.
 
 A few notes:
 
