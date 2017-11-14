@@ -21,7 +21,7 @@ To re-run the project:
 
 A few notes:
 
-- The Jupyter notebooks (\*.ipynb) are used to create graphs, tables and calculations for the paper. It is ad-hoc and very organized (sorry!), but the file names are more or less associated with the Python file used to create the data explored in the notebook.
+- The Jupyter notebooks (\*.ipynb) are used to create graphs, tables and calculations for the paper. It is ad-hoc and very disorganized (sorry!), but the file names are more or less associated with the Python file used to create the data explored in the notebook.
 
 - If the cleaned REFIT data was updated since this code was written, you may need to make modifications to the directory name and to the function ``save_refit_data`` in py/create_data.py.
 
