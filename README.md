@@ -1,6 +1,7 @@
 # thesis
 
-This contains the code used for my master's thesis, [Summarizing electricity usage with a neural network](https://drive.google.com/file/d/0B2eLkoWKdSD0enR4N2d2TEdlT0E/view?usp=sharing), which was supervised by [Nigel Goddard](http://homepages.inf.ed.ac.uk/ngoddard/). The thesis was written for the MSc in Artificial Intelligence program at the University of Edinburgh and was submitted in August 2017. It represents roughly 10 weeks of work. For this thesis I was awarded the Informatics Dissertation Prize for Top Performance.
+This contains the code used for my master's thesis, [Summarizing electricity usage with a neural network](https://drive.google.com/file/d/0B2eLkoWKdSD0enR4N2d2TEdlT0E/view?usp=sharing), which was supervised by [Nigel Goddard](http://homepages.inf.ed.ac.uk/ngoddard/). The thesis was written for the MSc in Artificial Intelligence program at the University of Edinburgh and was submitted in August 2017. It represents roughly 10 weeks of work. For this thesis I was awarded the Informatics Dissertation Prize for Top Performance (given to 3 of 135 students in the MS in AI program) as well as a [sustainability prize](https://www.ed.ac.uk/about/sustainability/news/postgraduate-dissertation-prize-2017).
+
 
 The abstract for the thesis is:
 
